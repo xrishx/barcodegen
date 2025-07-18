@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Generator</title>
+    
+    <!-- CSS Dependencies -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --background-color: #f4f7f6;
+            --card-bg-color: #ffffff;
+            --text-color: #4a4a4a;
+            --light-gray: #e0e0e0;
+        }
+        body { font-family: 'Poppins', sans-serif; background-color: var(--background-color); color: var(--text-color); }
+        .navbar { background-color: var(--card-bg-color) !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .navbar-brand { font-weight: 600; color: var(--primary-color) !important; }
+        .search-panel { background: var(--card-bg-color); padding: 2.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .form-control:focus, .form-select:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2); }
+        .btn-primary { background-color: var(--primary-color); border-color: var(--primary-color); }
+        .results-header { display: flex; justify-content: space-between; align-items: center; margin-top: 3rem; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--light-gray); }
+        .results-header h2 { font-weight: 600; color: var(--text-color); font-size: 1.5rem; }
+        .results-count { font-size: 1rem; font-weight: 600; color: var(--primary-color); background-color: rgba(74, 144, 226, 0.1); padding: 0.25rem 0.75rem; border-radius: 20px; }
+        .result-card { background: var(--card-bg-color); border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.3s ease, box-shadow 0.3s ease; overflow: hidden; }
+        .result-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
+        .result-card .card-title { font-weight: 600; }
+        
+        /* The robust iframe scaling styles */
+        .label-preview-container {
+            width: 100%;
+            /* This makes the container a positioning anchor */
+            position: relative;
+            
+            /* The 'padding-top' trick creates a box with a fixed aspect ratio (3:2) */
+            height: 0;
+            padding-top: 66.66%; /* (20mm / 30mm) * 100% = 66.66% */
+
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--light-gray);
+            border-radius: 8px;
+            background-color: #fafafa;
+            overflow: hidden;
+        }
+
+        .label-preview-iframe {
+            /* This makes the iframe fill its parent container perfectly */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/dashboard/"><i class="fa-solid fa-boxes-stacked"></i> Inventory App</a>
+        <div>
+            <a href="/dashboard/" class="btn btn-outline-secondary me-2">Back to Dashboard</a>
+            <button class="btn btn-outline-danger" id="logout-button">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container my-5">
+    <div class="search-panel">
+        <h1 class="mb-4 text-center">Barcode Generator</h1>
+        <div class="row g-3">
+            <div class="col-md-5"><label for="search-name-input" class="form-label">Search by Item Name</label><input type="text" class="form-control" placeholder="e.g., T-Shirt, Mug..." id="search-name-input"></div>
+            <div class="col-md-3"><label for="category-select" class="form-label">Filter by Category</label><select class="form-select" id="category-select"></select></div>
+            <div class="col-md-3"><label for="sort-select" class="form-label">Sort By</label><select class="form-select" id="sort-select"><option value="name">Name (A-Z)</option><option value="-name">Name (Z-A)</option><option value="sku">SKU (Asc)</option><option value="-sku">SKU (Desc)</option></select></div>
+            <div class="col-md-1 d-flex align-items-end"><button class="btn btn-primary w-100" type="button" id="search-button"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+        </div>
+    </div>
+
+    <div id="results-container">
+        <div class="text-center text-muted mt-5"><p>Search for an item to see label previews.</p></div>
+    </div>
+</div>
+
+<script>
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) { window.location.href = '/login/'; }
+
+    const searchInput = document.getElementById('search-name-input');
+    const categorySelect = document.getElementById('category-select');
+    const sortSelect = document.getElementById('sort-select');
+    const searchButton = document.getElementById('search-button');
+    const resultsContainer = document.getElementById('results-container');
+    const logoutButton = document.getElementById('logout-button');
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const response = await fetch('/inventory/categories/', { headers: { 'Authorization': `Token ${authToken}` }});
+        if (response.ok) {
+            const categories = await response.json();
+            const categoryList = categories.results || categories;
+            categorySelect.innerHTML = '<option value="">All Categories</option>';
+            categoryList.forEach(category => {
+                const option = new Option(category.name, category.id);
+                categorySelect.appendChild(option);
+            });
+        }
+    });
+
+    async function performSearch() {
+        const searchTerm = searchInput.value.trim();
+        const categoryId = categorySelect.value;
+        const sortOrder = sortSelect.value;
+        
+        resultsContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+
+        const params = new URLSearchParams({ search: searchTerm });
+        if (categoryId) { params.append('category', categoryId); }
+        if (sortOrder) { params.append('ordering', sortOrder); }
+
+        const apiUrl = `/inventory/items/?${params.toString()}`;
+        
+        const response = await fetch(apiUrl, { headers: { 'Authorization': `Token ${authToken}` } });
+
+        if (response.ok) {
+            const data = await response.json();
+            displayResults(data.results);
+        } else {
+            resultsContainer.innerHTML = `<div class="alert alert-danger mt-5">Error fetching items.</div>`;
+        }
+    }
+
+    function displayResults(items) {
+        if (!items) { resultsContainer.innerHTML = ''; return; }
+        
+        const headerHtml = `<div class="results-header"><h2>Search Results</h2><span class="results-count">${items.length} ${items.length === 1 ? 'item' : 'items'} found</span></div>`;
+
+        if (items.length === 0) {
+            resultsContainer.innerHTML = headerHtml + `<div class="alert alert-warning text-center">No items found matching your criteria.</div>`;
+            return;
+        }
+
+        let resultsHtml = '<div class="row g-4">';
+        items.forEach(item => {
+            const iframeId = `preview-iframe-${item.sku}`;
+            
+            resultsHtml += `
+                <div class="col-md-6 col-lg-4">
+                    <div class="card result-card h-100">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">${item.name}</h5>
+                            <p class="card-subtitle text-muted">SKU: ${item.sku}</p>
+                            <!-- THIS IS THE NEWLY ADDED LINE -->
+                            <p class="card-text fw-bold mb-2">Price: PHP ${item.price}</p>
+                            
+                            <div class="label-preview-container">
+                                <iframe id="${iframeId}" class="label-preview-iframe" title="Label Preview for ${item.sku}" scrolling="no"></iframe>
+                            </div>
+                            
+                            <div class="mt-auto">
+                                <button class="btn btn-primary w-100" onclick="printLabel('${item.sku}')">
+                                    <i class="fa-solid fa-print"></i> Print This Label
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        resultsHtml += '</div>';
+
+        resultsContainer.innerHTML = headerHtml + resultsHtml;
+
+        items.forEach(item => {
+            loadLabelPreview(item.sku);
+        });
+    }
+
+    
+
+    async function loadLabelPreview(sku) {
+        const iframe = document.getElementById(`preview-iframe-${sku}`);
+        if (!iframe) return;
+        try {
+            const response = await fetch(`/api/generate-label/?sku=${sku}`, {
+                headers: { 'Authorization': `Token ${authToken}` }
+            });
+            if (response.ok) {
+                const labelHtml = await response.text();
+                iframe.srcdoc = labelHtml;
+            } else {
+                iframe.srcdoc = "<html><body style='font-size:10px; color:red; text-align:center;'>Error loading preview.</body></html>";
+            }
+        } catch (error) {
+            console.error("Failed to load label preview for SKU:", sku, error);
+            iframe.srcdoc = "<html><body style='font-size:10px; color:red; text-align:center;'>Error loading preview.</body></html>";
+        }
+    }
+
+    async function printLabel(sku) {
+        const url = `/api/generate-label/?sku=${sku}`;
+        try {
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Token ${authToken}` }
+            });
+            if (response.ok) {
+                const labelHtml = await response.text();
+                const printWindow = window.open('', '_blank', 'width=400,height=400');
+                printWindow.document.open();
+                printWindow.document.write(labelHtml);
+                printWindow.document.close();
+                setTimeout(() => {
+                    printWindow.focus();
+                    printWindow.print();
+                    printWindow.close();
+                }, 250);
+            } else {
+                const errorData = await response.json();
+                alert(`Could not generate label: ${errorData.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error("Failed to generate or print label:", error);
+            alert("An error occurred while trying to print the label. Please check the console.");
+        }
+    }
+    
+    searchButton.addEventListener('click', performSearch);
+    sortSelect.addEventListener('change', performSearch);
+    categorySelect.addEventListener('change', performSearch);
+    searchInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') { performSearch(); }
+    });
+    logoutButton.addEventListener('click', async () => {
+        await fetch('/api/auth/logout/', { method: 'POST', headers: { 'Authorization': `Token ${authToken}` } });
+        localStorage.removeItem('authToken');
+        window.location.href = '/login/';
+    });
+</script>
+
+</body>
+</html>

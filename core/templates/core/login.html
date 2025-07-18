@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>CLASSIFIED LOGIN</title>
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+    <style>
+        :root {
+        --deep-black: #010101;
+        --terminal-green: #00ff88;
+        --dim-green: #007f4f;
+        --error-red: #ff3c41;
+        --muted: #444;
+        --border-glow: rgba(0, 255, 140, 0.25);
+        }
+        * { box-sizing: border-box; margin:0; padding:0; }
+
+        body, html {
+        height:100%;
+        background-color: var(--deep-black);
+        font-family: 'Share Tech Mono', monospace;
+        color: var(--terminal-green);
+        overflow: hidden;
+        }
+
+        #boot-screen {
+        position: fixed;
+        inset:0;
+        background-color: var(--deep-black);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index:10;
+        }
+        #boot-text {
+        width: 90%;
+        max-width: 600px;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        overflow: hidden;
+        }
+
+        .hidden { display:none; }
+
+        .login-container {
+        position: absolute;
+        top:50%; left:50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.85);
+        border: 1px solid var(--dim-green);
+        box-shadow: 0 0 18px var(--border-glow);
+        padding: 2.8rem 2.5rem;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        opacity:0;
+        transition: opacity 1s ease-in-out;
+        }
+
+        .visible { opacity:1 !important; }
+
+        .login-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        }
+        .login-header .banner {
+        color: var(--error-red);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 2px;
+        border: 1px solid var(--error-red);
+        display: inline-block;
+        padding: 4px 12px;
+        margin-bottom: 1.2rem;
+        animation: flicker 3s infinite alternate;
+        }
+        .login-header .icon {
+        font-size: 2.8rem;
+        color: var(--terminal-green);
+        text-shadow: 0 0 6px var(--terminal-green);
+        }
+        .login-header h2 {
+        font-size: 1.5rem;
+        margin-top: 0.75rem;
+        letter-spacing: 1px;
+        color: var(--terminal-green);
+        }
+        @keyframes flicker {
+        0%,19%,21%,23%,25%,54%,56%,100%{opacity:1;}
+        20%,22%,24%,55%{opacity:0.3;}
+        }
+
+        .form-label{ color: var(--terminal-green); text-transform:uppercase; font-size:0.8rem; margin-bottom:0.2rem; }
+        .form-control {
+        background-color: rgba(255,255,255,0.02);
+        border:1px solid var(--dim-green);
+        color: var(--terminal-green);
+        border-radius:6px;
+        padding:0.65rem;
+        font-size:1rem;
+        caret-color: var(--terminal-green);
+        }
+        .form-control::placeholder { color: rgba(0,255,140,0.4); }
+        .form-control:focus {
+        border-color: var(--terminal-green);
+        box-shadow: 0 0 8px rgba(0,255,140,0.5);
+        background-color: rgba(255,255,255,0.03);
+        }
+        input:-webkit-autofill {
+        box-shadow: 0 0 0px 1000px #000 inset !important;
+        -webkit-text-fill-color: var(--terminal-green) !important;
+        }
+
+        .btn-primary {
+        background-color: transparent;
+        border:1px solid var(--terminal-green);
+        color: var(--terminal-green);
+        font-weight:bold;
+        font-size:0.95rem;
+        padding:0.75rem;
+        width:100%;
+        text-transform:uppercase;
+        letter-spacing:1px;
+        margin-top:1.6rem;
+        transition:all 0.3s ease;
+        position:relative;
+        }
+        .btn-primary:hover {
+        background-color: var(--terminal-green);
+        color:#000;
+        box-shadow:0 0 12px var(--terminal-green);
+        }
+
+        #error-message {
+        background-color: rgba(255,60,65,0.08);
+        color: var(--error-red);
+        border:1px solid var(--error-red);
+        border-radius:6px;
+        padding:0.75rem;
+        margin-top:1rem;
+        font-size:0.85rem;
+        display:none;
+        text-align:center;
+        }
+
+        .login-footer {
+        text-align:center;
+        font-size:0.7rem;
+        margin-top:1.5rem;
+        color: var(--muted);
+        }
+        .login-footer::before {
+        content:"SYSTEM MONITORING ACTIVE // UNAUTHORIZED ACCESS WILL BE LOGGED";
+        animation: flicker 3.5s infinite alternate;
+        display:block;
+        }
+
+        .terminal-output {
+        font-size:0.85rem;
+        margin-top:1rem;
+        color: var(--terminal-green);
+        min-height:1.5rem;
+        white-space:pre;
+        overflow:hidden;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Boot Sequence Screen -->
+    <div id="boot-screen">
+        <div id="boot-text"></div>
+    </div>
+
+    <!-- Actual Login Form -->
+    <div class="login-container hidden" id="loginUI">
+        <div class="login-header">
+        <div class="banner">RESTRICTED ACCESS</div>
+        <div class="icon"><i class="fa-solid fa-user-shield"></i></div>
+        <h2>BARCODEGEN</h2>
+        </div>
+        <form id="login-form">
+        <div class="mb-3">
+            <label for="username" class="form-label">Username</label>
+            <input type="text" class="form-control" id="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input type="password" class="form-control" id="password" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+        <div id="error-message" class="alert alert-danger mt-3"></div>
+        <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        <div class="terminal-output" id="terminal-output"></div>
+        <div class="login-footer"></div>
+    </div>
+
+    <script>
+        const bootText = document.getElementById('boot-text');
+        const bootLines = [
+        'Initializing Secure Terminal...',
+        'Establishing encrypted link...',
+        'Loading security modules [##########] 100%',
+        'Authenticating clearance level...',
+        'System boot successful.',
+        'Launching login prompt...'
+        ];
+
+        // Increased typing speed (interval) and reduced delay between lines
+        function typeLine(line, i) {
+        return new Promise(resolve => {
+            let j = 0;
+            const interval = setInterval(() => {
+            bootText.textContent += line[j++];
+            if (j >= line.length) {
+                clearInterval(interval);
+                bootText.textContent += '\n';
+                setTimeout(resolve, 200); // Reduced delay between lines (from 500ms)
+            }
+            }, 12); // Faster typing speed (was 30ms)
+        });
+        }
+
+        async function bootSequence() {
+        for (let i = 0; i < bootLines.length; i++) {
+            await typeLine(bootLines[i]);
+        }
+        document.getElementById('boot-screen').remove();
+        const loginUI = document.getElementById('loginUI');
+        loginUI.classList.remove('hidden');
+        setTimeout(() => loginUI.classList.add('visible'), 50);
+        }
+        bootSequence();
+
+        const loginForm = document.getElementById('login-form');
+        const errorMessageDiv = document.getElementById('error-message');
+        const terminalOutput = document.getElementById('terminal-output');
+
+        function simulateTerminalLine(text, delay = 50) {
+        terminalOutput.textContent = '';
+        let i = 0;
+        const interval = setInterval(() => {
+            terminalOutput.textContent += text[i++];
+            if (i >= text.length) clearInterval(interval);
+        }, delay);
+        }
+
+        loginForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        errorMessageDiv.style.display = 'none';
+        terminalOutput.textContent = '';
+        simulateTerminalLine('> VERIFYING CREDENTIALS...');
+
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        try {
+            const response = await fetch('/api/auth/login/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+            });
+
+            if (response.ok) {
+            simulateTerminalLine('> ACCESS GRANTED');
+            const data = await response.json();
+            localStorage.setItem('authToken', data.key);
+            setTimeout(() => window.location.href = '/dashboard/', 800);
+            } else {
+            simulateTerminalLine('> ACCESS DENIED');
+            const errorData = await response.json();
+            let errorText = 'Login failed. Please check your username and password.';
+            if (errorData.non_field_errors) { errorText = errorData.non_field_errors.join(' '); }
+            errorMessageDiv.textContent = errorText;
+            errorMessageDiv.style.display = 'block';
+            }
+        } catch (error) {
+            simulateTerminalLine('> SYSTEM ERROR');
+            errorMessageDiv.textContent = 'An unexpected error occurred. Please try again.';
+            errorMessageDiv.style.display = 'block';
+        }
+        });
+    </script>
+</body>
+</html>

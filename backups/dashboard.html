@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    
+    <!-- Bootstrap CSS (we still use its grid system and basic components) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Google Fonts for better typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <!-- Custom Stylesheet -->
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --secondary-color: #50e3c2;
+            --background-color: #f4f7f6;
+            --card-bg-color: #ffffff;
+            --text-color: #4a4a4a;
+            --light-gray: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .navbar {
+            background-color: var(--card-bg-color) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .navbar-brand {
+            font-weight: 600;
+            color: var(--primary-color) !important;
+        }
+
+        .dashboard-header {
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg-color);
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            text-align: center;
+            padding: 2rem;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+
+        .stat-card .icon {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .stat-card-title {
+            font-size: 1rem;
+            color: #7f8c8d;
+            font-weight: 300;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-card-number {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .action-section {
+            background: var(--card-bg-color);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: #357ABD;
+            border-color: #357ABD;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/dashboard/"><i class="fa-solid fa-boxes-stacked"></i> Inventory App</a>
+        <div class="d-flex">
+            <button class="btn btn-outline-danger" id="logout-button">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container my-5">
+    <!-- Welcome Message -->
+    <h1 class="text-center dashboard-header" id="welcome-message">Welcome!</h1>
+
+    <!-- Data Counters -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="stat-card">
+                <div class="icon"><i class="fas fa-box"></i></div>
+                <h5 class="stat-card-title">Total Items</h5>
+                <p class="stat-card-number" id="item-counter">...</p>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="stat-card">
+                <div class="icon"><i class="fas fa-tags"></i></div>
+                <h5 class="stat-card-title">Total Categories</h5>
+                <p class="stat-card-number" id="category-counter">...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions Section -->
+    <div class="mt-5 text-center action-section">
+        <h2 class="mb-4">Manage Inventory</h2>
+        <div class="mb-3">
+            <button class="btn btn-lg btn-primary" id="update-button">
+                <i class="fa-solid fa-cloud-arrow-down me-2"></i>
+                <span id="update-button-text">Update from Google Sheet</span>
+                <span id="update-spinner" class="spinner-border spinner-border-sm" style="display: none;" role="status" aria-hidden="true"></span>
+            </button>
+            <div id="update-status" class="mt-3"></div>
+        </div>
+        <hr class="my-4">
+        <div>
+            <a href="/barcode-generator/" class="btn btn-lg btn-secondary">
+                <i class="fa-solid fa-barcode me-2"></i>
+                Go to Barcode Generator
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- The JavaScript block remains exactly the same as the last version -->
+<script>
+    // PASTE THE COMPLETE, WORKING JAVASCRIPT FROM OUR PREVIOUS STEP HERE
+    // The script that includes the updateButton event listener.
+    // ...
+    console.log("Dashboard script started.");
+
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+        window.location.href = '/login/';
+    }
+
+    const welcomeMessage = document.getElementById('welcome-message');
+    const itemCounter = document.getElementById('item-counter');
+    const categoryCounter = document.getElementById('category-counter');
+    const logoutButton = document.getElementById('logout-button');
+
+    const updateButton = document.getElementById('update-button');
+    const updateButtonText = document.getElementById('update-button-text');
+    const updateSpinner = document.getElementById('update-spinner');
+    const updateStatus = document.getElementById('update-status');
+
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchDashboardData();
+    });
+
+    async function fetchDashboardData() {
+        const headers = { 'Authorization': `Token ${authToken}` };
+
+        try {
+            const [userResponse, itemsResponse, categoriesResponse] = await Promise.all([
+                fetch('/api/auth/user/', { headers }),
+                fetch('/inventory/items/', { headers }),
+                fetch('/inventory/categories/', { headers })
+            ]);
+
+            if (userResponse.ok) {
+                const userData = await userResponse.json();
+                welcomeMessage.textContent = `Welcome, ${userData.username}!`;
+            }
+
+            if (itemsResponse.ok) {
+                const itemsData = await itemsResponse.json();
+                itemCounter.textContent = itemsData.count ?? itemsData.length;
+            } else { itemCounter.textContent = 'Error'; }
+
+            if (categoriesResponse.ok) {
+                const categoriesData = await categoriesResponse.json();
+                categoryCounter.textContent = categoriesData.count ?? categoriesData.length;
+            } else { categoryCounter.textContent = 'Error'; }
+        } catch (error) {
+            console.error("Error fetching dashboard data:", error);
+            itemCounter.textContent = 'Failed!';
+            categoryCounter.textContent = 'Failed!';
+        }
+    }
+
+    updateButton.addEventListener('click', async function() {
+        updateButton.disabled = true;
+        updateButtonText.textContent = "Updating...";
+        updateSpinner.style.display = 'inline-block';
+        updateStatus.innerHTML = '';
+
+        try {
+            const response = await fetch('/trigger-import/', {
+                method: 'POST',
+                headers: { 'Authorization': `Token ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                updateStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+                await fetchDashboardData();
+            } else {
+                let errorMessage = result.message || result.detail || 'An unknown error occurred.';
+                if (response.status === 403) {
+                    errorMessage = "Error: You do not have permission to perform this action.";
+                }
+                updateStatus.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
+            }
+        } catch (error) {
+            updateStatus.innerHTML = `<div class="alert alert-danger">A network error occurred.</div>`;
+        } finally {
+            updateButton.disabled = false;
+            updateButtonText.textContent = "Update from Google Sheet";
+            updateSpinner.style.display = 'none';
+        }
+    });
+
+    logoutButton.addEventListener('click', async function() {
+        await fetch('/api/auth/logout/', { method: 'POST', headers: { 'Authorization': `Token ${authToken}` } });
+        localStorage.removeItem('authToken');
+        window.location.href = '/login/';
+    });
+</script>
+
+</body>
+</html>

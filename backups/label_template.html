@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=TikTok+Sans:opsz,wght@12..36,300..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Roboto:wght@400&display=swap" rel="stylesheet">
+    <title>Print Label - {{ sku }}</title>
+    <style>
+        @page {
+            size: 30mm 20mm;
+            margin: 0;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            background: #fff;
+        }
+
+        .preview-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+        }
+
+        .label-wrapper {
+            width: 30mm;
+            height: 20mm;
+            position: relative;
+            padding: 0;
+            transform-origin: center;
+        }
+
+        @media screen {
+            .label-wrapper {
+                transform: scale(3);
+            }
+        }
+
+        @media print {
+            .label-wrapper {
+                transform: none !important;
+            }
+        }
+
+        .company-name {
+            font-family: 'Montserrat', Arial, sans-serif;
+            font-weight: 500;
+            font-size: 6pt;
+            position: absolute;
+            top: 1mm;
+            left: 1mm;
+            right: 1mm;
+            height: 2mm;
+            line-height: 2mm;
+            text-align: center;
+        }
+
+        .barcode-container {
+            position: absolute;
+            top: 3mm;
+            left: 1mm;
+            right: 1mm;
+            height: 8.5mm;
+            text-align: center;
+        }
+
+        .barcode-image {
+            width: 100%;
+            height: auto;
+            max-height: 10mm;
+            object-fit: contain;
+        }
+
+        .sku-text {
+            height: 1.5mm;
+            line-height: 1.5mm;
+            font-size: 5pt;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            margin-top: -0.7mm;
+        }
+
+        .item-name-container {
+            position: absolute;
+            top: 11.5mm;
+            left: 1mm;
+            right: 1mm;
+            bottom: 1mm;
+            height: 3.5mm;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .item-name {
+            font-family: 'Tiktok Sans', Arial, sans-serif;
+            font-weight: 300;
+            font-size: 6.5pt;
+            line-height: 1.5mm;
+            text-align: center;
+            max-height: 100%;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            white-space: normal;
+        }   
+
+        .price {
+            font-family: 'Tiktok Sans', Arial, sans-serif;
+            font-weight: 300;
+            font-size: 14pt;
+            color: #000;
+            position: absolute;
+            top: 15.5mm;
+            left: 1mm;
+            right: 1mm;
+            height: 3mm;
+            line-height: 3mm;
+            text-align: center;
+        }
+        /* .price {
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        } */
+
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <div class="label-wrapper">
+            <div class="company-name">{{ company_name }}</div>
+
+            <div class="barcode-container">
+                <svg id="barcode" class="barcode-image"></svg> 
+            </div>
+
+            <div class="item-name-container">
+                <div class="item-name">{{ item_name }}</div>
+            </div>
+
+            <div class="price">Php {{ price }}</div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            JsBarcode("#barcode", "{{ sku }}", {
+                format: "ean13",
+                lineColor: "#000",
+                width: 0.8, // thinner lines
+                height: 18,
+                displayValue: true, // optional: hide text to save space and ink
+                fontSize: 5,
+                textMargin: 1,
+                margin: 0.8,
+                flat: false,
+            });
+        });
+    </script>
+    <script>
+    function adjustPriceFont() {
+        const priceElem = document.querySelector(".price");
+        let fontSize = 14;
+
+        // Reset first
+        priceElem.style.fontSize = fontSize + "pt";
+        priceElem.style.whiteSpace = "nowrap";
+
+        const parentWidth = priceElem.offsetWidth;
+
+        // Reduce font size until the text fits in one line or until min font size
+        while (priceElem.scrollWidth > parentWidth && fontSize > 6) {
+            fontSize -= 0.5;
+            priceElem.style.fontSize = fontSize + "pt";
+        }
+
+        // If still too long even after reducing font, allow wrapping and shrink more
+        if (priceElem.scrollWidth > parentWidth) {
+            priceElem.style.whiteSpace = "normal";
+            priceElem.style.lineHeight = "1.1";
+            while ((priceElem.scrollHeight > priceElem.offsetHeight) && fontSize > 5) {
+                fontSize -= 0.5;
+                priceElem.style.fontSize = fontSize + "pt";
+            }
+        }
+    }
+function adjustItemNameFont() {
+    const nameElem = document.querySelector(".item-name");
+    const container = nameElem.parentElement;
+
+    if (!nameElem || !container) {
+        console.warn("Item name or container not found.");
+        return;
+    }
+
+    let fontSize = 6;
+    const minFontSize = 4.5;
+
+    nameElem.style.fontSize = fontSize + "pt";
+    nameElem.style.whiteSpace = "normal";
+    nameElem.style.lineHeight = "1.8mm";
+
+    // Use getBoundingClientRect for more accurate size check
+    while (
+        (nameElem.scrollHeight > container.clientHeight || nameElem.scrollWidth > container.clientWidth) &&
+        fontSize > minFontSize
+    ) {
+        fontSize -= 0.25;
+        nameElem.style.fontSize = fontSize + "pt";
+    }
+
+    console.log(`Final item name font size: ${fontSize}pt`);
+}
+
+
+    document.addEventListener("DOMContentLoaded", () => {
+        // Barcode generation
+        JsBarcode("#barcode", "{{ sku }}", {
+            format: "ean13",
+            lineColor: "#000",
+            width: 0.8,
+            height: 18,
+            displayValue: true,
+            fontSize: 5,
+            textMargin: 0,
+            margin: 0.8,
+            flat: false,
+        });
+
+        // Adjust price font
+        adjustPriceFont();
+        adjustItemNameFont();
+    });
+</script>
+
+</body>
+</html>
