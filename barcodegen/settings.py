@@ -32,19 +32,20 @@ ALLOWED_HOSTS = ['barcodegen-knwc.onrender.com', '127.0.0.1']
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
-
-import os
+load_dotenv()  # loads .env file in current directory
 
 private_key = os.getenv("GOOGLE_PRIVATE_KEY")
 if private_key is None:
     raise ValueError("GOOGLE_PRIVATE_KEY environment variable is missing!")
 
+# continue with replacing \n
+private_key = private_key.replace('\\n', '\n')
+
 GOOGLE_SHEETS_CREDENTIALS = {
     "type": os.getenv("GOOGLE_TYPE"),
     "project_id": os.getenv("GOOGLE_PROJECT_ID"),
     "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
-    "private_key": private_key.replace('\\n', '\n'),
+    "private_key": private_key,
     "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
     "client_id": os.getenv("GOOGLE_CLIENT_ID"),
     "auth_uri": os.getenv("GOOGLE_AUTH_URI"),
@@ -53,6 +54,7 @@ GOOGLE_SHEETS_CREDENTIALS = {
     "client_x509_cert_url": os.getenv("GOOGLE_CLIENT_CERT_URL"),
     "universe_domain": os.getenv("GOOGLE_UNIVERSE_DOMAIN"),
 }
+
 
 # Application definition
 
@@ -143,16 +145,16 @@ WSGI_APPLICATION = 'barcodegen.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 
-# DATABASES = {
-#    'default': dj_database_url.config(default='sqlite:///db.sqlite3')
-#}
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(default='sqlite:///db.sqlite3')
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
 
 
 # Password validation
