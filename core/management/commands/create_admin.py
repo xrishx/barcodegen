@@ -1,16 +1,16 @@
 from django.core.management.base import BaseCommand
-from django.contrib.auth.models import User
+from django.core.management import call_command
 
 class Command(BaseCommand):
-    help = 'Create a default superuser'
+    help = 'Run initial setup: migrate and create superuser'
 
     def handle(self, *args, **kwargs):
-        if not User.objects.filter(username='admin').exists():
-            User.objects.create_superuser(
-                username='erika',
-                email='erika@erika.com',
-                password='erika'
-            )
+        self.stdout.write(self.style.NOTICE("Running migrations..."))
+        call_command('migrate')
+
+        from django.contrib.auth.models import User
+        if not User.objects.filter(username='erika').exists():
+            User.objects.create_superuser('erika', 'erika@admin.com', 'erika')
             self.stdout.write(self.style.SUCCESS('Superuser created.'))
         else:
-            self.stdout.write('Superuser already exists.')
+            self.stdout.write(self.style.WARNING('Superuser already exists.'))
