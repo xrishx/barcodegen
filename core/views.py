@@ -227,6 +227,15 @@ import gspread
 
 from core.utils.import_helpers import import_category_from_sheet
 
+import logging
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from google.oauth2.service_account import Credentials
+import gspread
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
 @api_view(['POST'])
 def import_category_view(request):
     try:
@@ -234,13 +243,21 @@ def import_category_view(request):
     except (ValueError, TypeError):
         return Response({"error": "Invalid category_index"}, status=400)
 
-    scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
-    creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+    try:
+        scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+        creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
+        client = gspread.authorize(creds)
+        spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+    except Exception as e:
+        logger.error(f"Failed to connect to Google Sheets: {e}", exc_info=True)
+        return Response({"error": "Failed to connect to Google Sheets."}, status=500)
 
-    all_worksheets = spreadsheet.worksheets()
-    category_sheets = all_worksheets[4:]  # Skip first 4 sheets as per your original code
+    try:
+        all_worksheets = spreadsheet.worksheets()
+        category_sheets = all_worksheets[4:]
+    except Exception as e:
+        logger.error(f"Failed to retrieve worksheets: {e}", exc_info=True)
+        return Response({"error": "Failed to retrieve worksheets from spreadsheet."}, status=500)
 
     if category_index >= len(category_sheets):
         return Response({"done": True, "message": "All categories imported."})
@@ -250,12 +267,14 @@ def import_category_view(request):
     try:
         summary = import_category_from_sheet(sheet, settings.GOOGLE_SHEETS_CREDENTIALS)
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        logger.error(f"Error importing category at index {category_index}: {e}", exc_info=True)
+        return Response({"error": f"Import failed: {str(e)}"}, status=500)
 
     return Response({
         "done": False,
         "category_index": category_index + 1,
-        "category_name": summary["category_name"],
-        "items_processed": summary["items_processed"],
-        "message": summary["message"],
+        "category_name": summary.get("category_name", "Unknown"),
+        "items_processed": summary.get("items_processed", 0),
+        "message": summary.get("message", ""),
     })
+
