@@ -291,6 +291,96 @@
       .dashboard-header {
         font-size: 1.5rem;
       }
+
+      #import-category-button:disabled {
+      background-color: transparent !important;
+      color: var(--terminal-green) !important;
+      border-color: var(--terminal-green) !important;
+      box-shadow: 0 0 6px var(--terminal-green) !important;
+      opacity: 1 !important;
+    }
+
+    /* Styled dropdown (select) for category selector */
+      #category-selector {
+        background-color: var(--card-bg-dark);
+        color: var(--terminal-green);
+        border: 1.5px solid var(--terminal-green);
+        font-family: 'Share Tech Mono', monospace;
+        letter-spacing: 0.1em;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
+        box-shadow: 0 0 10px var(--border-glow);
+        transition: all 0.3s ease;
+      }
+
+      #category-selector:focus {
+        outline: none;
+        box-shadow: 0 0 18px var(--terminal-green);
+        border-color: var(--terminal-green);
+      }
+      #import-category-button:disabled {
+      cursor: wait;
+      }
+
+      
+      /* Disabled state */
+      #category-selector:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      /* Category import status */
+      #category-import-status .alert {
+        font-family: 'Share Tech Mono', monospace;
+        box-shadow: 0 0 6px var(--border-glow);
+      }
+      .form-select.custom-dark {
+      background-color: #031a0f; /* card background */
+      color: var(--terminal-green);
+      border: 1px solid var(--dim-green);
+      box-shadow: 0 0 8px var(--border-glow);
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .form-select.custom-dark:focus {
+      border-color: var(--terminal-green);
+      box-shadow: 0 0 12px var(--terminal-green);
+      background-color: #031a0f;
+      color: var(--terminal-green);
+    }
+    #import-category-button,
+    #import-category-button:disabled {
+      background-color: transparent;
+      color: var(--terminal-green);
+      border: 1.5px solid var(--terminal-green);
+      box-shadow: 0 0 6px var(--terminal-green);
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    #import-category-button:hover {
+      background-color: var(--terminal-green);
+      color: #000;
+      box-shadow: 0 0 20px var(--terminal-green);
+    }
+    .alert-custom-success {
+    background-color: rgba(0, 255, 136, 0.08);
+    border: 1px solid var(--terminal-green);
+    color: var(--terminal-green);
+    box-shadow: 0 0 8px var(--terminal-green);
+    font-family: 'Share Tech Mono', monospace;
+    }
+
+    .alert-custom-error {
+    background-color: rgba(255, 60, 65, 0.08);
+    border: 1px solid var(--error-red);
+    color: var(--error-red);
+    box-shadow: 0 0 8px var(--error-red);
+    font-family: 'Share Tech Mono', monospace;
+    }
+
+
+
     }
   </style>
 </head>
@@ -333,11 +423,22 @@
       <div class="mb-3">
         <button class="btn btn-primary btn-lg" id="update-button">
           <i class="fa-solid fa-cloud-arrow-down me-2"></i>
-          <span id="update-button-text">Update from Google Sheet</span>
+          <span id="update-button-text">Update all from Google Sheet</span>
           <span id="update-spinner" class="spinner-border spinner-border-sm" style="display:none;" role="status" aria-hidden="true"></span>
         </button>
         <div id="update-status" class="mt-3"></div>
       </div>
+      <div class="d-flex flex-column align-items-center gap-2 mt-4">
+        <select id="category-selector" class="form-select custom-dark mb-2" style="max-width: 300px;">
+          <option disabled selected>Loading categories...</option>
+        </select>
+        <button id="import-category-button" class="btn btn-secondary">
+          <span id="import-category-spinner" class="spinner-border spinner-border-sm me-2" style="display:none;" role="status" aria-hidden="true"></span>
+          <i id="import-category-icon" class="fa-solid fa-download me-2"></i>
+          <span id="import-category-text">Import Selected Category</span>
+        </button>
+      </div>
+      <div id="category-import-status" class="mt-3"></div>
       <hr class="my-4" />
       <div>
         <a href="/barcode-generator/" class="btn btn-secondary btn-lg">
@@ -407,54 +508,79 @@
 
     async function importCategoriesInChunks() {
       updateButton.disabled = true;
-      updateButtonText.textContent = 'Importing category 1...';
       updateSpinner.style.display = 'inline-block';
       updateStatus.innerHTML = '';
 
-      let categoryIndex = 0;
-      while (true) {
+      let nextCategoryIndex = 0;
+      let totalCategories = 0;
+
+      // First, get the total number of categories for a nice progress message
+      try {
+        const namesRes = await fetch('/api/category-sheet-names/', {
+            headers: { Authorization: `Token ${authToken}` }
+        });
+        if (!namesRes.ok) throw new Error('Could not fetch category list.');
+        const namesData = await namesRes.json();
+        totalCategories = namesData.names.length;
+      } catch (error) {
+          updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ Failed to get category list from Google Sheets.</div>`;
+          updateButton.disabled = false;
+          updateSpinner.style.display = 'none';
+          updateButtonText.textContent = 'Update all from Google Sheet';
+          return;
+      }
+      
+      let isDone = false;
+      while (!isDone) {
+        // Update UI to show progress
+        updateButtonText.textContent = `Importing ${nextCategoryIndex + 1} of ${totalCategories}...`;
+
         try {
-          const response = await fetch('/api/import-category/', {
+          const response = await fetch('/api/import-chunked/', { // <-- Calling the NEW endpoint
             method: 'POST',
             headers: {
-              Authorization: `Token ${authToken}`,
+              'Authorization': `Token ${authToken}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ category_index: categoryIndex }),
+            body: JSON.stringify({ category_index: nextCategoryIndex }), // <-- Sending the correct data
           });
 
           const result = await response.json();
 
           if (!response.ok) {
-            let errorMessage = result.message || result.detail || 'An unknown error occurred.';
-            if (response.status === 403) {
-              errorMessage = 'Error: You do not have permission to perform this action.';
-            }
-            updateStatus.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
-            break;
+            // Handle errors from the backend and stop the process
+            const errorMessage = result.error || 'An unknown server error occurred.';
+            updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${errorMessage}</div>`;
+            isDone = true; // Stop the loop on error
+            continue;
           }
 
+          // Show the message for the completed chunk
+          updateStatus.innerHTML = `<div class="alert alert-custom-success">✔️ ${result.message}</div>`;
+          
           if (result.done) {
-            updateStatus.innerHTML += `<div class="alert alert-success">All categories imported successfully!</div>`;
-            await fetchDashboardData();
-            break;
+            // The backend has signaled that all categories are imported
+            isDone = true;
+            await fetchDashboardData(); // Refresh total counts
+          } else {
+            // Prepare for the next iteration
+            nextCategoryIndex = result.next_category_index;
           }
-
-          updateStatus.innerHTML += `<div class="alert alert-info">[${categoryIndex + 1}] ${result.message}</div>`;
-          updateButtonText.textContent = `Importing category ${categoryIndex + 2}...`;
-          categoryIndex = result.category_index;
 
         } catch (error) {
-          updateStatus.innerHTML += `<div class="alert alert-danger">A network error occurred: ${error.message}</div>`;
-          break;
+          // Handle network errors
+          updateStatus.innerHTML += `<div class="alert alert-custom-error">❌ A network error occurred: ${error.message}</div>`;
+          isDone = true; // Stop the loop
         }
       }
 
+      // Reset the button after the loop is finished (either by success or error)
       updateButton.disabled = false;
-      updateButtonText.textContent = 'Update from Google Sheet';
+      updateButtonText.textContent = 'Update all from Google Sheet';
       updateSpinner.style.display = 'none';
     }
 
+    // This event listener should now correctly call the updated function
     updateButton.addEventListener('click', () => {
       importCategoriesInChunks();
     });
@@ -464,6 +590,89 @@
       localStorage.removeItem('authToken');
       window.location.href = '/login/';
     });
+
+    const categorySelector = document.getElementById('category-selector');
+    const importCategoryButton = document.getElementById('import-category-button');
+    const categoryImportStatus = document.getElementById('category-import-status');
+
+    const importCategoryIcon = document.getElementById('import-category-icon');
+    const importCategorySpinner = document.getElementById('import-category-spinner');
+    const importCategoryText = document.getElementById('import-category-text');
+
+    // Load existing categories from DB
+    async function loadExistingCategories() {
+      categorySelector.disabled = true;
+      categorySelector.innerHTML = '<option>Loading...</option>';
+      try {
+        const res = await fetch('/api/existing-categories/', {
+          headers: { Authorization: `Token ${authToken}` }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        console.log('Categories:', data.categories);
+
+        categorySelector.disabled = false;
+        categorySelector.innerHTML = '<option disabled selected>Select a category...</option>';
+        data.categories.forEach(name => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          categorySelector.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+        categorySelector.innerHTML = '<option disabled>Error loading categories</option>';
+      }
+    }
+
+
+    importCategoryButton.addEventListener('click', async () => {
+      const name = categorySelector.value;
+      if (!name || name === "Select a category...") {
+          categoryImportStatus.innerHTML = `<div class="alert alert-custom-error">⚠️ Please select a category first.</div>`;
+          return;
+      }
+
+      // --- Start Loading State ---
+      importCategoryButton.disabled = true;
+      importCategoryText.textContent = 'Importing...';
+      importCategoryIcon.style.display = 'none'; // Hide the download icon
+      importCategorySpinner.style.display = 'inline-block'; // Show the spinner
+      categoryImportStatus.innerHTML = '';
+
+      try {
+        const res = await fetch('/api/import-category/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Token ${authToken}`
+          },
+          body: JSON.stringify({ category_name: name })
+        });
+
+        const result = await res.json();
+
+        if (res.ok) {
+          categoryImportStatus.innerHTML = `<div class="alert alert-custom-success">✅ ${result.message}</div>`;
+          await fetchDashboardData(); // Refresh the main counters
+        } else {
+          categoryImportStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${result.error || result.message}</div>`;        
+        }
+      } catch (err) {
+        categoryImportStatus.innerHTML = `<div class="alert alert-custom-error">A network error occurred. Please try again.</div>`;
+      } finally {
+        // --- Reset Button to Normal State (always runs) ---
+        importCategoryButton.disabled = false;
+        importCategoryText.textContent = 'Import Selected Category';
+        importCategoryIcon.style.display = 'inline-block'; // Show the icon again
+        importCategorySpinner.style.display = 'none'; // Hide the spinner
+      }
+    });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchDashboardData();
+    loadExistingCategories();
+  });
 </script>
 
 </body>

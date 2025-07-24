@@ -237,44 +237,124 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def import_category_view(request):
-    try:
-        category_index = int(request.data.get('category_index', 0))
-    except (ValueError, TypeError):
-        return Response({"error": "Invalid category_index"}, status=400)
+    category_name = request.data.get('category_name')
+    if not category_name:
+        return Response({"error": "Missing category_name"}, status=400)
 
+    try:
+        Category.objects.get(name=category_name)
+    except Category.DoesNotExist:
+        return Response({"error": f"Category '{category_name}' does not exist in DB."}, status=400)
+
+    scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+    creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
+    client = gspread.authorize(creds)
+    spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+
+    # Find the sheet matching the category name
+    try:
+        sheet = spreadsheet.worksheet(category_name)
+    except gspread.WorksheetNotFound:
+        return Response({"error": f"No matching sheet named '{category_name}' found."}, status=404)
+
+    try:
+        summary = import_category_from_sheet(sheet, settings.GOOGLE_SHEETS_CREDENTIALS)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+    return Response({
+        "updated": True,
+        "category_name": summary["category_name"],
+        "items_processed": summary["items_processed"],
+        "message": summary["message"],
+    })
+
+from core.models import Category
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def existing_categories_view(request):
+    categories = Category.objects.all().values_list('name', flat=True)
+    return Response({'categories': list(categories)})
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+import gspread
+from google.oauth2.service_account import Credentials
+from django.conf import settings
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def category_sheet_names_view(request):
     try:
         scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
         creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+
+        category_sheets = spreadsheet.worksheets()[4:]  # skip first 4
+        names = [sheet.title for sheet in category_sheets]
+
+        return Response({'names': names})
     except Exception as e:
-        logger.error(f"Failed to connect to Google Sheets: {e}", exc_info=True)
-        return Response({"error": "Failed to connect to Google Sheets."}, status=500)
+        return Response({'error': str(e)}, status=500)
+
+# core/views.py
+
+# ... (keep all your other imports and views)
+from .utils.import_helpers import import_category_from_sheet # Make sure this is imported
+
+# ...
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def import_chunked_view(request):
+    """
+    Imports one category from Google Sheets based on an index.
+    Designed for a chunked import process orchestrated by the frontend.
+    """
+    # Get the index from the frontend's request. Default to 0 for the first call.
+    category_index = request.data.get('category_index', 0)
 
     try:
-        all_worksheets = spreadsheet.worksheets()
-        category_sheets = all_worksheets[4:]
+        # 1. Authenticate with Google Sheets
+        scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+        creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
+        client = gspread.authorize(creds)
+        spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+        
+        # 2. Get the list of category sheets (skipping the first 4)
+        category_sheets = spreadsheet.worksheets()[4:]
+        
+        # 3. Check if the import process is finished
+        if category_index >= len(category_sheets):
+            # We've processed all categories. Signal completion.
+            return Response({
+                'done': True,
+                'message': 'All categories have been successfully synchronized!'
+            })
+
+        # 4. Process the current chunk (one category sheet)
+        sheet_to_import = category_sheets[category_index]
+        summary = import_category_from_sheet(sheet_to_import, settings.GOOGLE_SHEETS_CREDENTIALS)
+
+        # 5. Return a progress update to the frontend
+        return Response({
+            'done': False,
+            'message': summary.get('message', f"Processed sheet '{sheet_to_import.title}'."),
+            'next_category_index': category_index + 1 # Tell the frontend which index to request next
+        })
+
+    except gspread.exceptions.APIError as e:
+        logger.error(f"Google Sheets API Error during chunked import: {e}")
+        return Response({'error': 'A Google Sheets API error occurred. Check rate limits or permissions.'}, status=503)
     except Exception as e:
-        logger.error(f"Failed to retrieve worksheets: {e}", exc_info=True)
-        return Response({"error": "Failed to retrieve worksheets from spreadsheet."}, status=500)
-
-    if category_index >= len(category_sheets):
-        return Response({"done": True, "message": "All categories imported."})
-
-    sheet = category_sheets[category_index]
-
-    try:
-        summary = import_category_from_sheet(sheet, settings.GOOGLE_SHEETS_CREDENTIALS)
-    except Exception as e:
-        logger.error(f"Error importing category at index {category_index}: {e}", exc_info=True)
-        return Response({"error": f"Import failed: {str(e)}"}, status=500)
-
-    return Response({
-        "done": False,
-        "category_index": category_index + 1,
-        "category_name": summary.get("category_name", "Unknown"),
-        "items_processed": summary.get("items_processed", 0),
-        "message": summary.get("message", ""),
-    })
-
+        logger.error(f"An unexpected error occurred during chunked import at index {category_index}: {e}")
+        return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=500)
