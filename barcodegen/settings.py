@@ -17,22 +17,14 @@ import dj_database_url
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-e8$42*@-jlf_hl^&$msrlsynoy29wvc%_uqsrx8(6fn!9rni&_'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ['barcodegen-knwc.onrender.com', '127.0.0.1']
-
 import os
 from dotenv import load_dotenv
 
 load_dotenv()  # loads .env file in current directory
+
+# GOOGLE SHEETS API CONFIGURATION
+GOOGLE_SHEETS_CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
+GOOGLE_SHEETS_SPREADSHEET_NAME = 'MASTER LIST 2 - v2.updated one'
 
 private_key = os.getenv("GOOGLE_PRIVATE_KEY")
 if private_key is None:
@@ -55,6 +47,16 @@ GOOGLE_SHEETS_CREDENTIALS = {
     "universe_domain": os.getenv("GOOGLE_UNIVERSE_DOMAIN"),
 }
 
+# Quick-start development settings - unsuitable for production
+# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = 'django-insecure-e8$42*@-jlf_hl^&$msrlsynoy29wvc%_uqsrx8(6fn!9rni&_'
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
+
+ALLOWED_HOSTS = ['barcodegen-knwc.onrender.com', '127.0.0.1']
 
 # Application definition
 
@@ -200,6 +202,3 @@ LOGIN_REDIRECT_URL = '/dashboard/'  # Redirect to dashboard after login
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# GOOGLE SHEETS API CONFIGURATION
-GOOGLE_SHEETS_CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
-GOOGLE_SHEETS_SPREADSHEET_NAME = 'MASTER LIST 2 - v2.updated one'
