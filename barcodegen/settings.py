@@ -55,7 +55,7 @@ SECRET_KEY = 'django-insecure-e8$42*@-jlf_hl^&$msrlsynoy29wvc%_uqsrx8(6fn!9rni&_
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['barcodegen-knwc.onrender.com', '127.0.0.1']
+ALLOWED_HOSTS = ['barcodegen-knwc.onrender.com', '127.0.0.1', 'barcodegen-production.up.railway.app']
 
 # Application definition
 
