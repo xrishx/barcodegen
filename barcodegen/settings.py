@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-e8$42*@-jlf_hl^&$msrlsynoy29wvc%_uqsrx8(6fn!9rni&_
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['barcodegen.onrender.com']
 
 
 # Application definition
@@ -60,9 +60,13 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         # Using TokenAuthentication as the primary method
         'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 150  # You can set this to any number, e.g., 50, 100
+    'PAGE_SIZE': 150,  # You can set this to any number, e.g., 50, 100,
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ]
 }
 
 SITE_ID = 1
@@ -115,10 +119,16 @@ WSGI_APPLICATION = 'barcodegen.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+
+# DATABASES = {
+#    'default': dj_database_url.config(default='sqlite:///db.sqlite3')
+#}
+
 DATABASES = {
-    'default': dj_database_url.config(
-        default='sqlite:///db.sqlite3'  # fallback to SQLite locally
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
 
 

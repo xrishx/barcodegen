@@ -13,5 +13,5 @@ class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = Item
         # These are the fields that will be included in the API response
-        fields = ['name', 'price', 'sku', 'category']
+        fields = ['name', 'price', 'sku', 'inventory', 'category']
         
