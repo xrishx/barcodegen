@@ -15,7 +15,7 @@ class Command(BaseCommand):
             skus_from_sheet = set()
 
             # 1. AUTHENTICATE
-            scopes = ['https://www.googleapis.com/auth/spreadsheets']
+            scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
             creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
             client = gspread.authorize(creds)
             spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
