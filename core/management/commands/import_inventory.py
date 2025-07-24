@@ -16,7 +16,7 @@ class Command(BaseCommand):
 
             # 1. AUTHENTICATE
             scopes = [ 'https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive' ]
-            creds = Credentials.from_service_account_file(settings.GOOGLE_SHEETS_CREDENTIALS_FILE, scopes=scopes)
+            creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
             client = gspread.authorize(creds)
             spreadsheet = client.open(settings.GOOGLE_SHEETS_SPREADSHEET_NAME)
             self.stdout.write(self.style.SUCCESS(f"Successfully opened spreadsheet: '{settings.GOOGLE_SHEETS_SPREADSHEET_NAME}'"))
