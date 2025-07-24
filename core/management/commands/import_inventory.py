@@ -1,6 +1,6 @@
 import gspread
 from django.core.management.base import BaseCommand
-from django.conf import settings
+from django.conf import settings 
 from google.oauth2.service_account import Credentials
 from core.models import Category, Item
 
@@ -15,7 +15,7 @@ class Command(BaseCommand):
             skus_from_sheet = set()
 
             # 1. AUTHENTICATE
-            scopes = [ 'https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive' ]
+            scopes = ['https://www.googleapis.com/auth/spreadsheets']
             creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
             client = gspread.authorize(creds)
             spreadsheet = client.open(settings.GOOGLE_SHEETS_SPREADSHEET_NAME)
