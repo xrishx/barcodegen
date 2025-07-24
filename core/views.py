@@ -216,3 +216,46 @@ def generate_label_view(request):
 
     # --- 4. Return the full HTML document ---
     return HttpResponse(html_string)
+
+# core/views.py
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.conf import settings
+from google.oauth2.service_account import Credentials
+import gspread
+
+from core.utils.import_helpers import import_category_from_sheet
+
+@api_view(['POST'])
+def import_category_view(request):
+    try:
+        category_index = int(request.data.get('category_index', 0))
+    except (ValueError, TypeError):
+        return Response({"error": "Invalid category_index"}, status=400)
+
+    scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+    creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
+    client = gspread.authorize(creds)
+    spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+
+    all_worksheets = spreadsheet.worksheets()
+    category_sheets = all_worksheets[4:]  # Skip first 4 sheets as per your original code
+
+    if category_index >= len(category_sheets):
+        return Response({"done": True, "message": "All categories imported."})
+
+    sheet = category_sheets[category_index]
+
+    try:
+        summary = import_category_from_sheet(sheet, settings.GOOGLE_SHEETS_CREDENTIALS)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+    return Response({
+        "done": False,
+        "category_index": category_index + 1,
+        "category_name": summary["category_name"],
+        "items_processed": summary["items_processed"],
+        "message": summary["message"],
+    })

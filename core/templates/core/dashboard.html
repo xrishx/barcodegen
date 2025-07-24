@@ -348,101 +348,123 @@
     </div>
   </div>
 
-    <script>
-        // Your existing dashboard JS logic remains unchanged
-        console.log("Dashboard script started.");
+<script>
+    console.log("Dashboard script started.");
 
-        const authToken = localStorage.getItem('authToken');
-        if (!authToken) {
-        window.location.href = '/login/';
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+      window.location.href = '/login/';
+    }
+
+    const welcomeMessage = document.getElementById('welcome-message');
+    const itemCounter = document.getElementById('item-counter');
+    const categoryCounter = document.getElementById('category-counter');
+    const logoutButton = document.getElementById('logout-button');
+
+    const updateButton = document.getElementById('update-button');
+    const updateButtonText = document.getElementById('update-button-text');
+    const updateSpinner = document.getElementById('update-spinner');
+    const updateStatus = document.getElementById('update-status');
+
+    document.addEventListener('DOMContentLoaded', function () {
+      fetchDashboardData();
+    });
+
+    async function fetchDashboardData() {
+      const headers = { Authorization: `Token ${authToken}` };
+
+      try {
+        const [userResponse, itemsResponse, categoriesResponse] = await Promise.all([
+          fetch('/api/auth/user/', { headers }),
+          fetch('/inventory/items/', { headers }),
+          fetch('/inventory/categories/', { headers }),
+        ]);
+
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          welcomeMessage.textContent = `Welcome, ${userData.username}!`;
         }
 
-        const welcomeMessage = document.getElementById('welcome-message');
-        const itemCounter = document.getElementById('item-counter');
-        const categoryCounter = document.getElementById('category-counter');
-        const logoutButton = document.getElementById('logout-button');
+        if (itemsResponse.ok) {
+          const itemsData = await itemsResponse.json();
+          itemCounter.textContent = itemsData.count ?? itemsData.length;
+        } else {
+          itemCounter.textContent = 'Error';
+        }
 
-        const updateButton = document.getElementById('update-button');
-        const updateButtonText = document.getElementById('update-button-text');
-        const updateSpinner = document.getElementById('update-spinner');
-        const updateStatus = document.getElementById('update-status');
+        if (categoriesResponse.ok) {
+          const categoriesData = await categoriesResponse.json();
+          categoryCounter.textContent = categoriesData.count ?? categoriesData.length;
+        } else {
+          categoryCounter.textContent = 'Error';
+        }
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        itemCounter.textContent = 'Failed!';
+        categoryCounter.textContent = 'Failed!';
+      }
+    }
 
-        document.addEventListener('DOMContentLoaded', function () {
-        fetchDashboardData();
-        });
+    async function importCategoriesInChunks() {
+      updateButton.disabled = true;
+      updateButtonText.textContent = 'Importing category 1...';
+      updateSpinner.style.display = 'inline-block';
+      updateStatus.innerHTML = '';
 
-        async function fetchDashboardData() {
-        const headers = { Authorization: `Token ${authToken}` };
-
+      let categoryIndex = 0;
+      while (true) {
         try {
-            const [userResponse, itemsResponse, categoriesResponse] = await Promise.all([
-            fetch('/api/auth/user/', { headers }),
-            fetch('/inventory/items/', { headers }),
-            fetch('/inventory/categories/', { headers }),
-            ]);
-
-            if (userResponse.ok) {
-            const userData = await userResponse.json();
-            welcomeMessage.textContent = `Welcome, ${userData.username}!`;
-            }
-
-            if (itemsResponse.ok) {
-            const itemsData = await itemsResponse.json();
-            itemCounter.textContent = itemsData.count ?? itemsData.length;
-            } else {
-            itemCounter.textContent = 'Error';
-            }
-
-            if (categoriesResponse.ok) {
-            const categoriesData = await categoriesResponse.json();
-            categoryCounter.textContent = categoriesData.count ?? categoriesData.length;
-            } else {
-            categoryCounter.textContent = 'Error';
-            }
-        } catch (error) {
-            console.error('Error fetching dashboard data:', error);
-            itemCounter.textContent = 'Failed!';
-            categoryCounter.textContent = 'Failed!';
-        }
-        }
-
-        updateButton.addEventListener('click', async function () {
-        updateButton.disabled = true;
-        updateButtonText.textContent = 'Updating...';
-        updateSpinner.style.display = 'inline-block';
-        updateStatus.innerHTML = '';
-
-        try {
-            const response = await fetch('/trigger-import/', {
+          const response = await fetch('/api/import-category/', {
             method: 'POST',
-            headers: { Authorization: `Token ${authToken}`, 'Content-Type': 'application/json' },
-            });
-            const result = await response.json();
+            headers: {
+              Authorization: `Token ${authToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ category_index: categoryIndex }),
+          });
 
-            if (response.ok) {
-            updateStatus.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
-            await fetchDashboardData();
-            } else {
+          const result = await response.json();
+
+          if (!response.ok) {
             let errorMessage = result.message || result.detail || 'An unknown error occurred.';
             if (response.status === 403) {
-                errorMessage = 'Error: You do not have permission to perform this action.';
+              errorMessage = 'Error: You do not have permission to perform this action.';
             }
             updateStatus.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
-            }
-        } catch (error) {
-            updateStatus.innerHTML = `<div class="alert alert-danger">A network error occurred.</div>`;
-        } finally {
-            updateButton.disabled = false;
-            updateButtonText.textContent = 'Update from Google Sheet';
-            updateSpinner.style.display = 'none';
-        }
-        });
+            break;
+          }
 
-        logoutButton.addEventListener('click', async function () {
-        await fetch('/api/auth/logout/', { method: 'POST', headers: { Authorization: `Token ${authToken}` } });
-        localStorage.removeItem('authToken');
-        window.location.href = '/login/';
-        });
-    </script>
+          if (result.done) {
+            updateStatus.innerHTML += `<div class="alert alert-success">All categories imported successfully!</div>`;
+            await fetchDashboardData();
+            break;
+          }
+
+          updateStatus.innerHTML += `<div class="alert alert-info">[${categoryIndex + 1}] ${result.message}</div>`;
+          updateButtonText.textContent = `Importing category ${categoryIndex + 2}...`;
+          categoryIndex = result.category_index;
+
+        } catch (error) {
+          updateStatus.innerHTML += `<div class="alert alert-danger">A network error occurred: ${error.message}</div>`;
+          break;
+        }
+      }
+
+      updateButton.disabled = false;
+      updateButtonText.textContent = 'Update from Google Sheet';
+      updateSpinner.style.display = 'none';
+    }
+
+    updateButton.addEventListener('click', () => {
+      importCategoriesInChunks();
+    });
+
+    logoutButton.addEventListener('click', async () => {
+      await fetch('/api/auth/logout/', { method: 'POST', headers: { Authorization: `Token ${authToken}` } });
+      localStorage.removeItem('authToken');
+      window.location.href = '/login/';
+    });
+</script>
+
 </body>
 </html>
