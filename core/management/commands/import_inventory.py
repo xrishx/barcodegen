@@ -18,8 +18,8 @@ class Command(BaseCommand):
             scopes = ['https://www.googleapis.com/auth/spreadsheets']
             creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
             client = gspread.authorize(creds)
-            spreadsheet = client.open(settings.GOOGLE_SHEETS_SPREADSHEET_NAME)
-            self.stdout.write(self.style.SUCCESS(f"Successfully opened spreadsheet: '{settings.GOOGLE_SHEETS_SPREADSHEET_NAME}'"))
+            spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+            self.stdout.write(self.style.SUCCESS(f"Successfully opened spreadsheet: 'MASTER LIST 2 - v2.updated one'"))
 
             # 2. GET SHEETS
             all_worksheets = spreadsheet.worksheets()

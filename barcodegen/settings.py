@@ -23,7 +23,6 @@ from dotenv import load_dotenv
 load_dotenv()  # loads .env file in current directory
 
 # GOOGLE SHEETS API CONFIGURATION
-GOOGLE_SHEETS_CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
 GOOGLE_SHEETS_SPREADSHEET_NAME = 'MASTER LIST 2 - v2.updated one'
 
 private_key = os.getenv("GOOGLE_PRIVATE_KEY")
