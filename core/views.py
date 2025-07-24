@@ -162,62 +162,105 @@ def generate_barcode_view(request):
         error_message = f"An unexpected error occurred while generating the barcode for SKU '{sku}': {str(e)}"
         return Response({'error': error_message}, status=500)
     
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def generate_label_view(request):
+#     """
+#     Generates a full HTML document for a 30x20mm label,
+#     including company name, barcode, item name, and price.
+#     """
+#     sku = request.GET.get('sku', None)
+#     if not sku:
+#         return Response({'error': 'SKU parameter is required.'}, status=400)
+
+#     try:
+#         item = Item.objects.get(sku=sku)
+#     except Item.DoesNotExist:
+#         return Response({'error': f'Item with SKU {sku} not found.'}, status=404)
+
+#     # --- 1. Generate the barcode image data as Base64 ---
+#     # We'll embed the image directly into the HTML to avoid a separate request.
+#     try:
+#         # Prepare the 12-digit SKU for the library
+#         if not sku.isdigit() or len(sku) not in [12, 13]:
+#             raise ValueError("Invalid SKU for EAN-13.")
+        
+#         sku_to_generate = sku[:12]
+        
+#         EAN = barcode.get_barcode_class('ean13')
+#         ean_barcode = EAN(sku_to_generate, writer=ImageWriter())
+        
+#         buffer = BytesIO()
+#         # Note: We are not rendering the text here, as we'll add it ourselves in the HTML
+#         ean_barcode.write(buffer, options={'write_text': False, 'module_height': 10.0})
+        
+#         import base64
+#         barcode_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+#     except Exception as e:
+#         return Response({'error': f'Failed to generate barcode image: {e}'}, status=500)
+
+#     # --- 2. Prepare the context data for the template ---
+#     # This data will be passed into our new HTML template.
+#     context = {
+#         'company_name': 'ALOCADA ENTERPRISES',
+#         'item_name': item.name,
+#         'price': item.price,
+#         'sku': item.sku,
+#         'barcode_image_base64': barcode_image_base64,
+#     }
+
+#     # --- 3. Render the HTML template as a string ---
+#     # We will create 'core/label_template.html' in the next step.
+#     html_string = render_to_string('core/label_template.html', context)
+
+#     # --- 4. Return the full HTML document ---
+#     return HttpResponse(html_string)
+
+# core/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def generate_label_view(request):
     """
-    Generates a full HTML document for a 30x20mm label,
-    including company name, barcode, item name, and price.
+    Generates a full HTML document for a 30x20mm label by rendering
+    the label_template.html. The template itself will handle barcode generation
+    using JsBarcode on the client-side.
     """
     sku = request.GET.get('sku', None)
     if not sku:
         return Response({'error': 'SKU parameter is required.'}, status=400)
 
+    # --- 1. Validate the SKU format ---
+    if not sku.isdigit() or len(sku) != 13:
+        error_message = f"Invalid SKU: '{sku}'. It must be a 13-digit number."
+        return Response({'error': error_message}, status=400)
+
+    # --- 2. Find the item in the database ---
     try:
         item = Item.objects.get(sku=sku)
     except Item.DoesNotExist:
         return Response({'error': f'Item with SKU {sku} not found.'}, status=404)
-
-    # --- 1. Generate the barcode image data as Base64 ---
-    # We'll embed the image directly into the HTML to avoid a separate request.
-    try:
-        # Prepare the 12-digit SKU for the library
-        if not sku.isdigit() or len(sku) not in [12, 13]:
-            raise ValueError("Invalid SKU for EAN-13.")
-        
-        sku_to_generate = sku[:12]
-        
-        EAN = barcode.get_barcode_class('ean13')
-        ean_barcode = EAN(sku_to_generate, writer=ImageWriter())
-        
-        buffer = BytesIO()
-        # Note: We are not rendering the text here, as we'll add it ourselves in the HTML
-        ean_barcode.write(buffer, options={'write_text': False, 'module_height': 10.0})
-        
-        import base64
-        barcode_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        
     except Exception as e:
-        return Response({'error': f'Failed to generate barcode image: {e}'}, status=500)
+        return Response({'error': f'A database error occurred: {e}'}, status=500)
 
-    # --- 2. Prepare the context data for the template ---
-    # This data will be passed into our new HTML template.
+    # --- 3. Prepare the context for the template ---
     context = {
         'company_name': 'ALOCADA ENTERPRISES',
         'item_name': item.name,
         'price': item.price,
         'sku': item.sku,
-        'barcode_image_base64': barcode_image_base64,
+        # We no longer need 'barcode_image_base64'
     }
 
-    # --- 3. Render the HTML template as a string ---
-    # We will create 'core/label_template.html' in the next step.
-    html_string = render_to_string('core/label_template.html', context)
+    # --- 4. Render the HTML template and return it ---
+    # The browser will receive this full HTML document.
+    try:
+        html_string = render_to_string('core/label_template.html', context)
+        return HttpResponse(html_string)
+    except Exception as e:
+        return Response({'error': f'Error rendering label template: {e}'}, status=500)
 
-    # --- 4. Return the full HTML document ---
-    return HttpResponse(html_string)
-
-# core/views.py
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
