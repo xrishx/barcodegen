@@ -34,11 +34,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import os
+
+private_key = os.getenv("GOOGLE_PRIVATE_KEY")
+if private_key is None:
+    raise ValueError("GOOGLE_PRIVATE_KEY environment variable is missing!")
+
 GOOGLE_SHEETS_CREDENTIALS = {
     "type": os.getenv("GOOGLE_TYPE"),
     "project_id": os.getenv("GOOGLE_PROJECT_ID"),
     "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
-    "private_key": os.getenv("GOOGLE_PRIVATE_KEY").replace('\\n', '\n'),  # convert literal \n to newlines
+    "private_key": private_key.replace('\\n', '\n'),
     "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
     "client_id": os.getenv("GOOGLE_CLIENT_ID"),
     "auth_uri": os.getenv("GOOGLE_AUTH_URI"),
