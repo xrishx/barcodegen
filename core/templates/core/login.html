@@ -188,7 +188,7 @@
         <div class="icon"><i class="fa-solid fa-user-shield"></i></div>
         <h2>BARCODEGEN</h2>
         </div>
-        <form method="POST">
+        <form method="POST" id="login-form">
         {% csrf_token %}
         <div class="mb-3">
             <label for="username" class="form-label">Username</label>
@@ -234,6 +234,9 @@
             }, 12); // Faster typing speed (was 30ms)
         });
         }
+        document.getElementById('login-form').addEventListener('submit', function () {
+            simulateTerminalLine('> VERIFYING CREDENTIALS...');
+        });
 
         async function bootSequence() {
         for (let i = 0; i < bootLines.length; i++) {
