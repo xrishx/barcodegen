@@ -12,7 +12,7 @@ class Category(models.Model):
 class Item(models.Model):
     name = models.CharField(max_length=200)
     price = models.CharField(max_length=50, blank = True, null=True)
-    sku = models.CharField(max_length=13, unique=True)
+    sku = models.CharField(max_length=13, unique=True, db_index=True)
     inventory = models.CharField(max_length=13, default="0")  # Default inventory to "0"
     category = models.ForeignKey(Category, related_name='items', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
