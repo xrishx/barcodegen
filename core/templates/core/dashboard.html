@@ -534,19 +534,16 @@
       updateStatus.innerHTML = '';
       updateButtonText.textContent = 'Starting...';
 
-      let nextCategoryIndex = 0;
-      let totalCategories = 0;
+      let currentItemCount = parseInt(itemCounter.textContent) || 0;
+      let currentCategoryCount = parseInt(categoryCounter.textContent) || 0;
 
       let sheetNames;
-          try {
-              // Step 1: Get the list of sheet names to process.
-              const res = await fetch('/api/category-sheet-names/', { credentials: 'include' });
-              if (!res.ok) {
-                  throw new Error(`Failed to get category list. Status: ${res.status}`);
-              }
-              const data = await res.json();
-              sheetNames = data.names;
-          } catch (error) {
+    try {
+        const res = await fetch('/api/category-sheet-names/', { credentials: 'include' });
+        if (!res.ok) throw new Error(`Failed to get category list. Status: ${res.status}`);
+        const data = await res.json();
+        sheetNames = data.names;
+      } catch (error) {
               console.error(error);
               updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${error.message}</div>`;
               updateButton.disabled = false;
@@ -580,9 +577,11 @@
 
                   // Show a success message for this specific sheet.
                   updateStatus.innerHTML = `<div class="alert alert-custom-success">✔️ ${result.message}</div>`;
-                  await fetchDashboardData(); // Refresh counters after each success
+                  currentItemCount += result.created; 
+                  currentItemCount -= result.deleted;
+                  itemCounter.textContent = currentItemCount;
 
-              } catch (error) {
+                } catch (error) {
                   console.error(error);
                   updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${error.message}</div>`;
                   // Stop the loop if one fails.
@@ -595,6 +594,7 @@
           
           // If the loop completes successfully
           updateStatus.innerHTML = `<div class="alert alert-custom-success">✅ All categories have been synchronized!</div>`;
+          await fetchDashboardData(); 
           updateButton.disabled = false;
           updateSpinner.style.display = 'none';
           updateButtonText.textContent = 'Update all from Google Sheet';
@@ -658,7 +658,7 @@
 
       try {
         // MODIFIED: Added credentials and CSRF token for this POST request.
-        const res = await fetch('/api/import-category/', {
+          const res = await fetch('/api/import-category-by-name/', {
           method: 'POST',
           credentials: 'include',
           headers: {

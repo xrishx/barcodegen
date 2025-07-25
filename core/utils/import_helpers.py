@@ -1,116 +1,106 @@
-# core/utils/import_helpers.py
+# In core/utils/import_helpers.py
 
 import gspread
 from django.db import transaction
 from core.models import Category, Item
+import logging
 
-@transaction.atomic # This is crucial! Wraps the entire operation in a database transaction.
+logger = logging.getLogger(__name__)
+
+@transaction.atomic
 def import_category_from_sheet(sheet: gspread.Worksheet, google_sheets_credentials=None):
     """
-    Synchronizes all items for a given category from a single gspread worksheet.
-    - Creates new items.
-    - Updates existing items.
-    - Deletes items from the database that are no longer in the sheet.
-    
-    Returns a dictionary summarizing the operation.
-    The 'google_sheets_credentials' argument is kept for compatibility but is not used.
+    Optimized version of the sync function that uses bulk database operations.
     """
     category_name = sheet.title.strip()
     category_obj, _ = Category.objects.get_or_create(name=category_name)
+    logger.info(f"Starting bulk import for category: {category_name}")
 
-    # --- Step 1: Fetch data from the sheet and prepare for sync ---
+    # --- Step 1: Fetch data using your robust method ---
     all_data = sheet.get_all_values()
-    
-    # If the sheet is empty (only header or less), delete all DB items for this category
     if len(all_data) < 2:
+        # This part of your original logic is already efficient.
         deleted_count, _ = Item.objects.filter(category=category_obj).delete()
-        return {
-            "category_name": category_name,
-            "items_processed": 0,
-            "created": 0,
-            "updated": 0,
-            "deleted": deleted_count,
-            "message": f"Sync complete for '{category_name}'. Sheet was empty, {deleted_count} items removed."
-        }
+        return {"message": f"Sync complete. Sheet '{category_name}' was empty, {deleted_count} items removed."}
 
     header_row, item_rows = all_data[0], all_data[1:]
-
-    # Use your original method for finding column indices
     try:
         sku_col_index = header_row.index('SKU')
         desc_col_index = header_row.index('Barcode Description')
         price_col_index = header_row.index('Price')
         inventory_col_index = header_row.index('Inventory')
     except ValueError as e:
-        raise ValueError(f"Missing required column in category '{category_name}': {e}")
+        raise ValueError(f"Missing required column in '{category_name}': {e}")
 
-    # This set will hold all SKUs found in the Google Sheet. It's vital for the deletion step.
+    # --- Step 2: Prepare all data in memory FIRST (No DB calls in this loop) ---
+    sheet_data = {}
     skus_from_sheet = set()
-    created_count = 0
-    updated_count = 0
-
-    # --- Step 2: Loop through sheet rows to CREATE and UPDATE items ---
     for row in item_rows:
         def get_cell_data(col_index):
             return row[col_index].strip() if len(row) > col_index else ""
 
         sku = get_cell_data(sku_col_index)
         if not sku:
-            continue  # Skip rows without a SKU
+            continue
         
-        # Add the valid SKU to our set for later comparison
         skus_from_sheet.add(sku)
+        
+        # Store all row data in a dictionary keyed by SKU
+        sheet_data[sku] = {
+            'name': get_cell_data(desc_col_index) or 'No Name Provided',
+            'price': get_cell_data(price_col_index) or "0",
+            'inventory': get_cell_data(inventory_col_index) or "0",
+            'category': category_obj
+        }
 
-        # Your original logic for handling price and inventory data
-        price_string = get_cell_data(price_col_index)
-        price_to_save = "0" if not price_string else price_string
-
-        inventory_value = get_cell_data(inventory_col_index)
-        inventory_to_save = "0" if not inventory_value else inventory_value
-
-        # Use update_or_create and check the 'created' flag
-        item, created = Item.objects.update_or_create(
-            sku=sku,
-            defaults={
-                'name': get_cell_data(desc_col_index) or 'No Name Provided',
-                'price': price_to_save,
-                'inventory': inventory_to_save,
-                'category': category_obj
-            }
-        )
-
-        if created:
-            created_count += 1
-        else:
-            updated_count += 1
-
-    # --- Step 3: Identify and DELETE items that are in the DB but not the sheet ---
+    # --- Step 3: Perform Bulk Database Operations ---
     
-    # Get a set of all SKUs currently in the database for this category
+    # Fetch all relevant existing items from the DB in ONE query
+    existing_items_map = {
+        item.sku: item for item in Item.objects.filter(sku__in=skus_from_sheet)
+    }
+
+    items_to_create = []
+    items_to_update = []
+
+    for sku, data in sheet_data.items():
+        if sku in existing_items_map:
+            # Item exists, prepare for bulk update
+            item = existing_items_map[sku]
+            item.name = data['name']
+            item.price = data['price']
+            item.inventory = data['inventory']
+            items_to_update.append(item)
+        else:
+            # Item is new, prepare for bulk create
+            items_to_create.append(Item(sku=sku, **data))
+    
+    # Create all new items in ONE query
+    if items_to_create:
+        Item.objects.bulk_create(items_to_create, batch_size=500)
+
+    # Update all existing items in ONE query
+    if items_to_update:
+        Item.objects.bulk_update(items_to_update, ['name', 'price', 'inventory'], batch_size=500)
+
+    # --- Step 4: Deletion logic (your original logic is already efficient!) ---
     db_skus = set(Item.objects.filter(category=category_obj).values_list('sku', flat=True))
-
-    # Find the difference: SKUs that are in the database but were NOT in the sheet we just processed
     skus_to_delete = db_skus - skus_from_sheet
-
     deleted_count = 0
     if skus_to_delete:
-        # Perform a single, efficient bulk delete operation
-        items_deleted_query = Item.objects.filter(category=category_obj, sku__in=skus_to_delete)
-        deleted_count = items_deleted_query.count()
-        items_deleted_query.delete()
+        deleted_count, _ = Item.objects.filter(category=category_obj, sku__in=skus_to_delete).delete()
 
-
-    # --- Step 4: Return a detailed summary ---
+    # --- Step 5: Return summary ---
+    created_count = len(items_to_create)
+    updated_count = len(items_to_update)
     summary_message = (
         f"Sync for '{category_name}' complete. "
         f"Created: {created_count}, Updated: {updated_count}, Removed: {deleted_count}."
     )
-
+    logger.info(summary_message)
     return {
-        "category_name": category_name,
-        "items_processed": len(skus_from_sheet),
+        "message": summary_message,
         "created": created_count,
         "updated": updated_count,
-        "deleted": deleted_count,
-        "message": summary_message,
+        "deleted": deleted_count
     }
