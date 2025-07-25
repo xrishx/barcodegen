@@ -121,6 +121,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',  # Required for allauth
     'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', 
 ]
 
 ROOT_URLCONF = 'barcodegen.urls'
@@ -213,7 +215,6 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
 LOGIN_URL = '/login/'  # Redirect to login page if not authenticated
 LOGIN_REDIRECT_URL = '/dashboard/'  # Redirect to dashboard after login
 SESSION_COOKIE_SECURE = True
@@ -225,3 +226,6 @@ CSRF_COOKIE_SECURE = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles' # <-- The missing setting
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
