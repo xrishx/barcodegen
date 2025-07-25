@@ -188,16 +188,21 @@
         <div class="icon"><i class="fa-solid fa-user-shield"></i></div>
         <h2>BARCODEGEN</h2>
         </div>
-        <form id="login-form">
+        <form method="POST">
+        {% csrf_token %}
         <div class="mb-3">
             <label for="username" class="form-label">Username</label>
-            <input type="text" class="form-control" id="username" placeholder="Enter username" required autocomplete="username">
+            <input type="text" name="username" class="form-control" id="username" placeholder="Enter username" required>
         </div>
         <div class="mb-3">
             <label for="password" class="form-label">Password</label>
-            <input type="password" class="form-control" id="password" placeholder="Enter password" required autocomplete="current-password">
+            <input type="password" name="password" class="form-control" id="password" placeholder="Enter password" required>
         </div>
-        <div id="error-message" class="alert alert-danger mt-3"></div>
+        {% if error %}
+            <div class="alert alert-danger mt-2" style="color: var(--error-red); border: 1px solid var(--error-red);">
+            {{ error }}
+            </div>
+        {% endif %}
         <button type="submit" class="btn btn-primary">Login</button>
         </form>
         <div class="terminal-output" id="terminal-output"></div>
@@ -254,41 +259,41 @@
         }, delay);
         }
 
-        loginForm.addEventListener('submit', async function(event) {
-        event.preventDefault();
-        errorMessageDiv.style.display = 'none';
-        terminalOutput.textContent = '';
-        simulateTerminalLine('> VERIFYING CREDENTIALS...');
+    // loginForm.addEventListener('submit', async function(event) {
+    //     event.preventDefault();
+    //     errorMessageDiv.style.display = 'none';
+    //     terminalOutput.textContent = '';
+    //     simulateTerminalLine('> VERIFYING CREDENTIALS...');
 
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
+    //     const username = document.getElementById('username').value;
+    //     const password = document.getElementById('password').value;
 
-        try {
-            const response = await fetch('/api/auth/login/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-            });
+    //     try {
+    //         const response = await fetch('/api/auth/login/', {
+    //         method: 'POST',
+    //         headers: { 'Content-Type': 'application/json' },
+    //         body: JSON.stringify({ username, password })
+    //         });
 
-            if (response.ok) {
-            simulateTerminalLine('> ACCESS GRANTED');
-            const data = await response.json();
-            localStorage.setItem('authToken', data.key);
-            setTimeout(() => window.location.href = '/dashboard/', 800);
-            } else {
-            simulateTerminalLine('> ACCESS DENIED');
-            const errorData = await response.json();
-            let errorText = 'Login failed. Please check your username and password.';
-            if (errorData.non_field_errors) { errorText = errorData.non_field_errors.join(' '); }
-            errorMessageDiv.textContent = errorText;
-            errorMessageDiv.style.display = 'block';
-            }
-        } catch (error) {
-            simulateTerminalLine('> SYSTEM ERROR');
-            errorMessageDiv.textContent = 'An unexpected error occurred. Please try again.';
-            errorMessageDiv.style.display = 'block';
-        }
-        });
+    //         if (response.ok) {
+    //         simulateTerminalLine('> ACCESS GRANTED');
+    //         const data = await response.json();
+    //         localStorage.setItem('authToken', data.key);
+    //         setTimeout(() => window.location.href = '/dashboard/', 800);
+    //         } else {
+    //         simulateTerminalLine('> ACCESS DENIED');
+    //         const errorData = await response.json();
+    //         let errorText = 'Login failed. Please check your username and password.';
+    //         if (errorData.non_field_errors) { errorText = errorData.non_field_errors.join(' '); }
+    //         errorMessageDiv.textContent = errorText;
+    //         errorMessageDiv.style.display = 'block';
+    //         }
+    //     } catch (error) {
+    //         simulateTerminalLine('> SYSTEM ERROR');
+    //         errorMessageDiv.textContent = 'An unexpected error occurred. Please try again.';
+    //         errorMessageDiv.style.display = 'block';
+    //     }
+    //     });
     </script>
 </body>
 </html>

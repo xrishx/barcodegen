@@ -17,6 +17,9 @@ from barcode.errors import IllegalCharacterError, NumberOfDigitsError
 from io import BytesIO
 from django.http import HttpResponse
 from django.template.loader import render_to_string
+from django.contrib.auth import authenticate, login
+from django.shortcuts import render, redirect
+from django.http import HttpResponseRedirect
 
 from rest_framework.pagination import PageNumberPagination
 
@@ -70,15 +73,26 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
         # We can set a default order here.
         return queryset.order_by('name')
 
+
 def login_view(request):
-    """Serves the login.html template."""
-    # Note: It seems counter-intuitive to protect a login page,
-    # but it's good practice. If a user is already logged in and goes to /login/,
-    # we can redirect them to the dashboard. Let's add that logic.
-    from django.shortcuts import redirect
     if request.user.is_authenticated:
-        return redirect('/dashboard/') # Redirect logged-in users away from login
+        return redirect('/dashboard/')
+
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return redirect(request.GET.get('next') or '/dashboard/')
+        else:
+            return render(request, 'core/login.html', {
+                'error': 'Invalid username or password.'
+            })
+
     return render(request, 'core/login.html')
+
 
 @login_required
 def dashboard_view(request):
@@ -86,26 +100,26 @@ def dashboard_view(request):
     return render(request, 'core/dashboard.html')
 
 # --- NEW VIEW TO TRIGGER THE IMPORT SCRIPT ---
-@api_view(['POST']) # Use POST for actions that change data or run processes
-@permission_classes([IsAuthenticated]) # IMPORTANT: Only allow admins to run this
-def trigger_import_view(request):
-    """
-    Triggers the 'import_inventory' management command.
-    """
-    try:
-        # Show that the process is starting
-        print("Import command triggered by user:", request.user.username)
+# @api_view(['POST']) # Use POST for actions that change data or run processes
+# @permission_classes([IsAuthenticated]) # IMPORTANT: Only allow admins to run this
+# def trigger_import_view(request):
+#     """
+#     Triggers the 'import_inventory' management command.
+#     """
+#     try:
+#         # Show that the process is starting
+#         print("Import command triggered by user:", request.user.username)
         
-        # Use call_command to run your script
-        call_command('import_inventory')
+#         # Use call_command to run your script
+#         call_command('import_inventory')
 
-        # Return a success response
-        return JsonResponse({'status': 'success', 'message': 'Inventory synchronization completed successfully.'})
+#         # Return a success response
+#         return JsonResponse({'status': 'success', 'message': 'Inventory synchronization completed successfully.'})
 
-    except Exception as e:
-        # Log the error and return an error response
-        print(f"An error occurred during import: {e}")
-        return JsonResponse({'status': 'error', 'message': f'An error occurred: {str(e)}'}, status=500)
+#     except Exception as e:
+#         # Log the error and return an error response
+#         print(f"An error occurred during import: {e}")
+#         return JsonResponse({'status': 'error', 'message': f'An error occurred: {str(e)}'}, status=500)
 
 @login_required
 def barcode_generator_view(request):

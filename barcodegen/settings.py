@@ -195,6 +195,9 @@ USE_TZ = True
 STATIC_URL = 'static/'
 LOGIN_URL = '/login/'  # Redirect to login page if not authenticated
 LOGIN_REDIRECT_URL = '/dashboard/'  # Redirect to dashboard after login
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
