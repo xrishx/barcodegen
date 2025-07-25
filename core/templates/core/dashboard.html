@@ -452,34 +452,55 @@
 <script>
     console.log("Dashboard script started.");
 
-    const authToken = localStorage.getItem('authToken');
-    if (!authToken) {
-      window.location.href = '/login/';
+    // HELPER FUNCTION: To get the CSRF token required for POST requests with session auth.
+    // This is a standard function for Django projects.
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
+    const csrftoken = getCookie('csrftoken');
 
+    // Get references to all the DOM elements
     const welcomeMessage = document.getElementById('welcome-message');
     const itemCounter = document.getElementById('item-counter');
     const categoryCounter = document.getElementById('category-counter');
     const logoutButton = document.getElementById('logout-button');
-
     const updateButton = document.getElementById('update-button');
     const updateButtonText = document.getElementById('update-button-text');
     const updateSpinner = document.getElementById('update-spinner');
     const updateStatus = document.getElementById('update-status');
+    const categorySelector = document.getElementById('category-selector');
+    const importCategoryButton = document.getElementById('import-category-button');
+    const categoryImportStatus = document.getElementById('category-import-status');
+    const importCategoryIcon = document.getElementById('import-category-icon');
+    const importCategorySpinner = document.getElementById('import-category-spinner');
+    const importCategoryText = document.getElementById('import-category-text');
 
-    document.addEventListener('DOMContentLoaded', function () {
-      fetchDashboardData();
-    });
-
+    // --- Main Data Fetching ---
     async function fetchDashboardData() {
-      const headers = { Authorization: `Token ${authToken}` };
-
       try {
+        // MODIFIED: Removed 'headers' and added 'credentials: include' to send session cookies.
         const [userResponse, itemsResponse, categoriesResponse] = await Promise.all([
-          fetch('/api/auth/user/', { headers }),
-          fetch('/inventory/items/', { headers }),
-          fetch('/inventory/categories/', { headers }),
+          fetch('/api/auth/user/', { credentials: 'include' }),
+          fetch('/inventory/items/', { credentials: 'include' }),
+          fetch('/inventory/categories/', { credentials: 'include' }),
         ]);
+
+        if (userResponse.status === 403 || userResponse.status === 401) {
+            // If the session is invalid, the server will block the request. Redirect to login.
+            window.location.href = '/login/';
+            return;
+        }
 
         if (userResponse.ok) {
           const userData = await userResponse.json();
@@ -506,19 +527,18 @@
       }
     }
 
+    // --- Google Sheets Import Functions ---
     async function importCategoriesInChunks() {
       updateButton.disabled = true;
       updateSpinner.style.display = 'inline-block';
       updateStatus.innerHTML = '';
+      updateButtonText.textContent = 'Starting...';
 
       let nextCategoryIndex = 0;
       let totalCategories = 0;
 
-      // First, get the total number of categories for a nice progress message
       try {
-        const namesRes = await fetch('/api/category-sheet-names/', {
-            headers: { Authorization: `Token ${authToken}` }
-        });
+        const namesRes = await fetch('/api/category-sheet-names/', { credentials: 'include' }); // MODIFIED
         if (!namesRes.ok) throw new Error('Could not fetch category list.');
         const namesData = await namesRes.json();
         totalCategories = namesData.names.length;
@@ -532,85 +552,56 @@
       
       let isDone = false;
       while (!isDone) {
-        // Update UI to show progress
         updateButtonText.textContent = `Importing ${nextCategoryIndex + 1} of ${totalCategories}...`;
-
         try {
-          const response = await fetch('/api/import-chunked/', { // <-- Calling the NEW endpoint
+          // MODIFIED: Added credentials and CSRF token for this POST request.
+          const response = await fetch('/api/import-chunked/', {
             method: 'POST',
+            credentials: 'include',
             headers: {
-              'Authorization': `Token ${authToken}`,
               'Content-Type': 'application/json',
+              'X-CSRFToken': csrftoken,
             },
-            body: JSON.stringify({ category_index: nextCategoryIndex }), // <-- Sending the correct data
+            body: JSON.stringify({ category_index: nextCategoryIndex }),
           });
 
           const result = await response.json();
-
           if (!response.ok) {
-            // Handle errors from the backend and stop the process
             const errorMessage = result.error || 'An unknown server error occurred.';
             updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${errorMessage}</div>`;
-            isDone = true; // Stop the loop on error
+            isDone = true;
             continue;
           }
-
-          // Show the message for the completed chunk
+          
           updateStatus.innerHTML = `<div class="alert alert-custom-success">✔️ ${result.message}</div>`;
           
           if (result.done) {
-            // The backend has signaled that all categories are imported
             isDone = true;
-            await fetchDashboardData(); // Refresh total counts
+            await fetchDashboardData();
           } else {
-            // Prepare for the next iteration
             nextCategoryIndex = result.next_category_index;
           }
 
         } catch (error) {
-          // Handle network errors
           updateStatus.innerHTML += `<div class="alert alert-custom-error">❌ A network error occurred: ${error.message}</div>`;
-          isDone = true; // Stop the loop
+          isDone = true;
         }
       }
 
-      // Reset the button after the loop is finished (either by success or error)
       updateButton.disabled = false;
       updateButtonText.textContent = 'Update all from Google Sheet';
       updateSpinner.style.display = 'none';
     }
 
-    // This event listener should now correctly call the updated function
-    updateButton.addEventListener('click', () => {
-      importCategoriesInChunks();
-    });
-
-    logoutButton.addEventListener('click', async () => {
-      await fetch('/api/auth/logout/', { method: 'POST', headers: { Authorization: `Token ${authToken}` } });
-      localStorage.removeItem('authToken');
-      window.location.href = '/login/';
-    });
-
-    const categorySelector = document.getElementById('category-selector');
-    const importCategoryButton = document.getElementById('import-category-button');
-    const categoryImportStatus = document.getElementById('category-import-status');
-
-    const importCategoryIcon = document.getElementById('import-category-icon');
-    const importCategorySpinner = document.getElementById('import-category-spinner');
-    const importCategoryText = document.getElementById('import-category-text');
-
-    // Load existing categories from DB
     async function loadExistingCategories() {
       categorySelector.disabled = true;
       categorySelector.innerHTML = '<option>Loading...</option>';
       try {
-        const res = await fetch('/api/existing-categories/', {
-          headers: { Authorization: `Token ${authToken}` }
-        });
+        // MODIFIED: Added credentials for this GET request.
+        const res = await fetch('/api/existing-categories/', { credentials: 'include' });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        console.log('Categories:', data.categories);
-
+        
         categorySelector.disabled = false;
         categorySelector.innerHTML = '<option disabled selected>Select a category...</option>';
         data.categories.forEach(name => {
@@ -625,6 +616,25 @@
       }
     }
 
+    // --- Event Listeners ---
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchDashboardData();
+      loadExistingCategories();
+    });
+
+    updateButton.addEventListener('click', importCategoriesInChunks);
+
+    logoutButton.addEventListener('click', async () => {
+      // MODIFIED: Use POST with credentials and CSRF token. Removed localStorage logic.
+      await fetch('/api/auth/logout/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'X-CSRFToken': csrftoken,
+        },
+      });
+      window.location.href = '/login/';
+    });
 
     importCategoryButton.addEventListener('click', async () => {
       const name = categorySelector.value;
@@ -633,46 +643,40 @@
           return;
       }
 
-      // --- Start Loading State ---
       importCategoryButton.disabled = true;
       importCategoryText.textContent = 'Importing...';
-      importCategoryIcon.style.display = 'none'; // Hide the download icon
-      importCategorySpinner.style.display = 'inline-block'; // Show the spinner
+      importCategoryIcon.style.display = 'none';
+      importCategorySpinner.style.display = 'inline-block';
       categoryImportStatus.innerHTML = '';
 
       try {
+        // MODIFIED: Added credentials and CSRF token for this POST request.
         const res = await fetch('/api/import-category/', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Token ${authToken}`
+            'X-CSRFToken': csrftoken,
           },
           body: JSON.stringify({ category_name: name })
         });
 
         const result = await res.json();
-
         if (res.ok) {
           categoryImportStatus.innerHTML = `<div class="alert alert-custom-success">✅ ${result.message}</div>`;
-          await fetchDashboardData(); // Refresh the main counters
+          await fetchDashboardData();
         } else {
           categoryImportStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${result.error || result.message}</div>`;        
         }
       } catch (err) {
         categoryImportStatus.innerHTML = `<div class="alert alert-custom-error">A network error occurred. Please try again.</div>`;
       } finally {
-        // --- Reset Button to Normal State (always runs) ---
         importCategoryButton.disabled = false;
         importCategoryText.textContent = 'Import Selected Category';
-        importCategoryIcon.style.display = 'inline-block'; // Show the icon again
-        importCategorySpinner.style.display = 'none'; // Hide the spinner
+        importCategoryIcon.style.display = 'inline-block';
+        importCategorySpinner.style.display = 'none';
       }
     });
-
-  document.addEventListener('DOMContentLoaded', () => {
-    fetchDashboardData();
-    loadExistingCategories();
-  });
 </script>
 
 </body>
