@@ -488,43 +488,31 @@
 
     // --- Main Data Fetching ---
     async function fetchDashboardData() {
-      try {
-        // MODIFIED: Removed 'headers' and added 'credentials: include' to send session cookies.
-        const [userResponse, itemsResponse, categoriesResponse] = await Promise.all([
-          fetch('/api/auth/user/', { credentials: 'include' }),
-          fetch('/inventory/items/', { credentials: 'include' }),
-          fetch('/inventory/categories/', { credentials: 'include' }),
-        ]);
+        try {
+            // Call the single, new, fast endpoint
+            const response = await fetch('/api/dashboard-stats/', { credentials: 'include' });
 
-        if (userResponse.status === 403 || userResponse.status === 401) {
-            // If the session is invalid, the server will block the request. Redirect to login.
-            window.location.href = '/login/';
-            return;
-        }
+            if (response.status === 403 || response.status === 401) {
+                window.location.href = '/login/';
+                return;
+            }
 
-        if (userResponse.ok) {
-          const userData = await userResponse.json();
-          welcomeMessage.textContent = `Welcome, ${userData.username}!`;
-        }
+            if (!response.ok) {
+                throw new Error('Failed to fetch dashboard stats.');
+            }
 
-        if (itemsResponse.ok) {
-          const itemsData = await itemsResponse.json();
-          itemCounter.textContent = itemsData.count ?? itemsData.length;
-        } else {
-          itemCounter.textContent = 'Error';
-        }
+            const data = await response.json();
 
-        if (categoriesResponse.ok) {
-          const categoriesData = await categoriesResponse.json();
-          categoryCounter.textContent = categoriesData.count ?? categoriesData.length;
-        } else {
-          categoryCounter.textContent = 'Error';
+            // Update the UI from the pre-calculated data
+            itemCounter.textContent = data.total_items;
+            categoryCounter.textContent = data.total_categories;
+            welcomeMessage.textContent = `Welcome, ${data.user.username}!`;
+
+        } catch (error) {
+            console.error(error);
+            itemCounter.textContent = 'Error';
+            categoryCounter.textContent = 'Error';
         }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        itemCounter.textContent = 'Failed!';
-        categoryCounter.textContent = 'Failed!';
-      }
     }
 
     // --- Google Sheets Import Functions ---

@@ -2,10 +2,29 @@
 
 import gspread
 from django.db import transaction
-from core.models import Category, Item
+from core.models import Category, Item, DashboardStats
 import logging
 
 logger = logging.getLogger(__name__)
+
+def update_dashboard_stats():
+    """
+    Recalculates and saves the total item and category counts.
+    This is called after a sync operation.
+    """
+    total_items_count = Item.objects.count()
+    total_categories_count = Category.objects.count()
+    
+    # Use update_or_create to ensure there's only ever one row in the table.
+    stats, created = DashboardStats.objects.update_or_create(
+        id=1, # Always update the row with ID=1
+        defaults={
+            'total_items': total_items_count,
+            'total_categories': total_categories_count
+        }
+    )
+    logger.info("Dashboard stats have been updated.")
+
 
 @transaction.atomic
 def import_category_from_sheet(sheet: gspread.Worksheet, google_sheets_credentials=None):

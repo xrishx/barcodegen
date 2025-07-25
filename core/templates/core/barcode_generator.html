@@ -252,110 +252,144 @@ body {
     <div id="results-container">
         <div class="text-center text-muted mt-5"><p>Search for an item to see label previews.</p></div>
     </div>
+        <div id="load-more-container" class="text-center mt-4" style="display: none;">
+        <button class="btn btn-primary btn-lg" id="load-more-button">Load More Results</button>
+    </div>
 </div>
 
 <script>
-    const authToken = localStorage.getItem('authToken');
-    if (!authToken) { window.location.href = '/login/'; }
+    // --- SETUP AND HELPERS ---
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
 
+    // --- DOM ELEMENT REFERENCES ---
     const searchInput = document.getElementById('search-name-input');
     const categorySelect = document.getElementById('category-select');
     const sortSelect = document.getElementById('sort-select');
     const searchButton = document.getElementById('search-button');
     const resultsContainer = document.getElementById('results-container');
     const logoutButton = document.getElementById('logout-button');
+    const loadMoreContainer = document.getElementById('load-more-container');
+    const loadMoreButton = document.getElementById('load-more-button');
 
-    document.addEventListener('DOMContentLoaded', async () => {
-        const response = await fetch('/inventory/categories/', { headers: { 'Authorization': `Token ${authToken}` }});
-        if (response.ok) {
-            const categories = await response.json();
-            const categoryList = categories.results || categories;
-            categorySelect.innerHTML = '<option value="">All Categories</option>';
-            categoryList.forEach(category => {
-                const option = new Option(category.name, category.id);
-                categorySelect.appendChild(option);
-            });
-        }
-    });
+    // --- STATE MANAGEMENT ---
+    let nextPageUrl = null; // This will store the URL for the next page of results
 
+    // --- CORE FUNCTIONS ---
+
+    // Initial search, which clears all previous results
     async function performSearch() {
+        nextPageUrl = null; // Reset for a new search
+        loadMoreContainer.style.display = 'none';
+        resultsContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+
         const searchTerm = searchInput.value.trim();
         const categoryId = categorySelect.value;
         const sortOrder = sortSelect.value;
         
-        resultsContainer.innerHTML = '<div class="text-center mt-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
-
         const params = new URLSearchParams({ search: searchTerm });
         if (categoryId) { params.append('category', categoryId); }
         if (sortOrder) { params.append('ordering', sortOrder); }
 
         const apiUrl = `/inventory/items/?${params.toString()}`;
         
-        const response = await fetch(apiUrl, { headers: { 'Authorization': `Token ${authToken}` } });
+        const response = await fetch(apiUrl, { credentials: 'include' });
 
         if (response.ok) {
             const data = await response.json();
-            displayResults(data.results);
+            resultsContainer.innerHTML = ''; // Clear the "Loading..." spinner
+            displayResults(data); // Call displayResults for the first time
         } else {
+            if(response.status === 403 || response.status === 401) { window.location.href = '/login/'; }
             resultsContainer.innerHTML = `<div class="alert alert-danger mt-5">Error fetching items.</div>`;
         }
     }
 
-    function displayResults(items) {
-        if (!items) { resultsContainer.innerHTML = ''; return; }
-        
-        const headerHtml = `<div class="results-header"><h2>Search Results</h2><span class="results-count">${items.length} ${items.length === 1 ? 'item' : 'items'} found</span></div>`;
+    // Fetches the next page of results and appends them
+    async function loadMoreResults() {
+        if (!nextPageUrl) return;
 
-        if (items.length === 0) {
-            resultsContainer.innerHTML = headerHtml + `<div class="alert alert-warning text-center">No items found matching your criteria.</div>`;
-            return;
+        loadMoreButton.disabled = true;
+        loadMoreButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+        
+        const response = await fetch(nextPageUrl, { credentials: 'include' });
+        if(response.ok) {
+            const data = await response.json();
+            displayResults(data, true); // The 'true' flag means we are APPENDING results
         }
 
-        let resultsHtml = '<div class="row g-4">';
+        loadMoreButton.disabled = false;
+        loadMoreButton.innerHTML = 'Load More Results';
+    }
+
+    // A single function to display results, which can either clear or append
+    function displayResults(data, isAppending = false) {
+        const items = data.results;
+        
+        // The header is only added for the very first batch of results
+        if (!isAppending) {
+            const headerHtml = `<div class="results-header"><h2>Search Results</h2><span class="results-count">${data.count} ${data.count === 1 ? 'item' : 'items'} found</span></div>`;
+            resultsContainer.innerHTML = headerHtml;
+
+            if (data.count === 0) {
+                resultsContainer.innerHTML += `<div class="alert alert-warning text-center">No items found matching your criteria.</div>`;
+            }
+        }
+        
+        // Build the HTML for the new items
+        let newResultsHtml = '';
         items.forEach(item => {
             const iframeId = `preview-iframe-${item.sku}`;
-            
-            resultsHtml += `
-                <div class="col-md-6 col-lg-4">
+            newResultsHtml += `
+                <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card result-card h-100">
                         <div class="card-body d-flex flex-column">
                             <h5 class="card-title">${item.name}</h5>
                             <p class="card-subtitle">SKU: ${item.sku}</p>
                             <p class="card-subtitle">Inventory: ${item.inventory}</p>
                             <p class="card-text fw-bold mb-2">Price: PHP ${item.price}</p>
-                            
-                            <div class="label-preview-container">
-                                <iframe id="${iframeId}" class="label-preview-iframe" title="Label Preview for ${item.sku}" scrolling="no"></iframe>
-                            </div>
-                            
-                            <div class="mt-auto">
-                                <button class="btn btn-primary w-100" onclick="printLabel('${item.sku}')">
-                                    <i class="fa-solid fa-print"></i> Print This Label
-                                </button>
-                            </div>
+                            <div class="label-preview-container"><iframe id="${iframeId}" class="label-preview-iframe" title="Label Preview for ${item.sku}" scrolling="no"></iframe></div>
+                            <div class="mt-auto"><button class="btn btn-primary w-100" onclick="printLabel('${item.sku}')"><i class="fa-solid fa-print"></i> Print This Label</button></div>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         });
-        resultsHtml += '</div>';
 
-        resultsContainer.innerHTML = headerHtml + resultsHtml;
+        // Add the new HTML to the page
+        if (!isAppending) {
+            // For the first search, create the row container
+            resultsContainer.innerHTML += `<div class="row g-0">${newResultsHtml}</div>`;
+        } else {
+            // For "Load More", find the existing row container and add to it
+            resultsContainer.querySelector('.row').insertAdjacentHTML('beforeend', newResultsHtml);
+        }
 
-        items.forEach(item => {
-            loadLabelPreview(item.sku);
-        });
+        // Update the state for the next "Load More" click
+        nextPageUrl = data.next;
+        loadMoreContainer.style.display = nextPageUrl ? 'block' : 'none';
+
+        // Load previews for only the newly added items
+        items.forEach(item => loadLabelPreview(item.sku));
     }
-
-    
 
     async function loadLabelPreview(sku) {
         const iframe = document.getElementById(`preview-iframe-${sku}`);
         if (!iframe) return;
         try {
-            const response = await fetch(`/api/generate-label/?sku=${sku}`, {
-                headers: { 'Authorization': `Token ${authToken}` }
-            });
+            const response = await fetch(`/api/generate-label/?sku=${sku}`, { credentials: 'include' });
             if (response.ok) {
                 const labelHtml = await response.text();
                 iframe.srcdoc = labelHtml;
@@ -371,9 +405,7 @@ body {
     async function printLabel(sku) {
         const url = `/api/generate-label/?sku=${sku}`;
         try {
-            const response = await fetch(url, {
-                headers: { 'Authorization': `Token ${authToken}` }
-            });
+            const response = await fetch(url, { credentials: 'include' });
             if (response.ok) {
                 const labelHtml = await response.text();
                 const printWindow = window.open('', '_blank', 'width=700,height=500');
@@ -395,15 +427,25 @@ body {
         }
     }
     
+    // --- EVENT LISTENERS ---
+    document.addEventListener('DOMContentLoaded', async () => {
+        const response = await fetch('/inventory/categories/', { credentials: 'include' });
+        if (response.ok) {
+            const categories = await response.json();
+            const categoryList = categories.results || categories;
+            categorySelect.innerHTML = '<option value="">All Categories</option>';
+            categoryList.forEach(category => categorySelect.appendChild(new Option(category.name, category.id)));
+        }
+    });
+    
     searchButton.addEventListener('click', performSearch);
     sortSelect.addEventListener('change', performSearch);
     categorySelect.addEventListener('change', performSearch);
-    searchInput.addEventListener('keyup', (event) => {
-        if (event.key === 'Enter') { performSearch(); }
-    });
+    searchInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') performSearch(); });
+    loadMoreButton.addEventListener('click', loadMoreResults); // The new listener
+
     logoutButton.addEventListener('click', async () => {
-        await fetch('/api/auth/logout/', { method: 'POST', headers: { 'Authorization': `Token ${authToken}` } });
-        localStorage.removeItem('authToken');
+        await fetch('/api/auth/logout/', { method: 'POST', credentials: 'include', headers: { 'X-CSRFToken': csrftoken } });
         window.location.href = '/login/';
     });
 </script>

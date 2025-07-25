@@ -1,6 +1,6 @@
 from django.db.models import Q
 from rest_framework import viewsets, filters
-from .models import Category, Item
+from .models import Category, Item, DashboardStats
 from .serializers import CategorySerializer, ItemSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import render, redirect
@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from .filters import ItemFilter
 from django.contrib.auth.decorators import login_required
-
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 import barcode
 from barcode.writer import ImageWriter
 from barcode.errors import IllegalCharacterError, NumberOfDigitsError
@@ -24,7 +24,7 @@ from google.oauth2.service_account import Credentials
 import gspread
 from django.conf import settings
 
-from core.utils.import_helpers import import_category_from_sheet
+from core.utils.import_helpers import import_category_from_sheet, update_dashboard_stats
 import logging
 
 logger = logging.getLogger(__name__)
@@ -54,9 +54,16 @@ class ItemViewSet(viewsets.ReadOnlyModelViewSet):
 
         search_term = self.request.query_params.get('search', None)
         if search_term:
-            queryset = queryset.filter(Q(name__icontains=search_term) | Q(sku__icontains=search_term))
-
-        return queryset.order_by('name')
+            # This is the new, super-fast search logic
+            # It searches across both name and sku fields
+            vector = SearchVector('name', 'sku')
+            query = SearchQuery(search_term)
+            queryset = queryset.annotate(
+                rank=SearchRank(vector, query)
+            ).filter(rank__gte=0.1).order_by('-rank') # Order by relevance!
+        
+        # The OrderingFilter will still handle the explicit sort dropdown
+        return queryset
 
 
 # --- Authentication views ---
@@ -281,3 +288,29 @@ def import_category_by_name_view(request):
     except Exception as e:
         logger.error(f"Unexpected error while importing '{category_name}': {e}")
         return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_stats_view(request):
+    """
+    Provides dashboard stats instantly by reading from the pre-calculated table.
+    If the stats are zero, it triggers a one-time recalculation.
+    """
+    stats, created = DashboardStats.objects.get_or_create(id=1)
+    
+    # "Prime the pump": If the stats are zero (likely because this is the first run),
+    # and it's not a newly created row, trigger a one-time update.
+    # We also check if there are actually items in the DB, to avoid recounting an empty db.
+    if not created and stats.total_items == 0 and Item.objects.exists():
+        update_dashboard_stats()
+        # Refresh the stats object from the database after updating it
+        stats = DashboardStats.objects.get(id=1)
+
+    user_data = {'username': request.user.username} if request.user.is_authenticated else {}
+    
+    data = {
+        'total_items': stats.total_items,
+        'total_categories': stats.total_categories,
+        'user': user_data
+    }
+    return Response(data)
