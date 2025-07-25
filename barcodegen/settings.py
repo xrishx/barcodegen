@@ -120,6 +120,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',  # Required for allauth
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'barcodegen.urls'
@@ -141,6 +142,11 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'barcodegen.wsgi.application'
 
+CORS_ALLOWED_ORIGINS = [
+    "https://barcodegen-knwc.onrender.com",
+]
+
+CORS_ALLOW_CREDENTIALS = True
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
