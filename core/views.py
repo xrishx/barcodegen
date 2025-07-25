@@ -81,6 +81,7 @@ def login_view(request):
 
 @login_required
 def dashboard_view(request):
+    print(f"User authenticated? {request.user.is_authenticated}, user: {request.user}")
     return render(request, 'core/dashboard.html')
 
 
