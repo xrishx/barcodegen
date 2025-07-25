@@ -247,3 +247,37 @@ def import_chunked_view(request):
     except Exception as e:
         logger.error(f"Unexpected error during chunked import at index {category_index}: {e}")
         return Response({'error': f'Unexpected error: {str(e)}'}, status=500)
+
+# Add this new view function to your core/views.py file
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def import_category_by_name_view(request):
+    category_name = request.data.get('category_name')
+    if not category_name:
+        return Response({"error": "Missing 'category_name' in request."}, status=400)
+
+    try:
+        scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
+        creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
+        client = gspread.authorize(creds)
+        spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
+
+        # This is the efficient part: get the worksheet directly by name
+        sheet_to_import = spreadsheet.worksheet(category_name)
+        
+        summary = import_category_from_sheet(sheet_to_import, settings.GOOGLE_SHEETS_CREDENTIALS)
+
+        return Response({
+            "message": summary.get('message', f"Processed sheet '{category_name}'.")
+        })
+
+    except gspread.WorksheetNotFound:
+        logger.error(f"Worksheet '{category_name}' not found in Google Sheets.")
+        return Response({'error': f"Worksheet '{category_name}' not found."}, status=404)
+    except gspread.exceptions.APIError as e:
+        logger.error(f"Google Sheets API error while importing '{category_name}': {e}")
+        return Response({'error': 'Google Sheets API error. Check rate limits/permissions.'}, status=503)
+    except Exception as e:
+        logger.error(f"Unexpected error while importing '{category_name}': {e}")
+        return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=500)

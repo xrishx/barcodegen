@@ -537,61 +537,68 @@
       let nextCategoryIndex = 0;
       let totalCategories = 0;
 
-      try {
-        const namesRes = await fetch('/api/category-sheet-names/', { credentials: 'include' }); // MODIFIED
-        if (!namesRes.ok) throw new Error('Could not fetch category list.');
-        const namesData = await namesRes.json();
-        totalCategories = namesData.names.length;
-      } catch (error) {
-          updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ Failed to get category list from Google Sheets.</div>`;
+      let sheetNames;
+          try {
+              // Step 1: Get the list of sheet names to process.
+              const res = await fetch('/api/category-sheet-names/', { credentials: 'include' });
+              if (!res.ok) {
+                  throw new Error(`Failed to get category list. Status: ${res.status}`);
+              }
+              const data = await res.json();
+              sheetNames = data.names;
+          } catch (error) {
+              console.error(error);
+              updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${error.message}</div>`;
+              updateButton.disabled = false;
+              updateSpinner.style.display = 'none';
+              updateButtonText.textContent = 'Update all from Google Sheet';
+              return;
+          }
+
+          // Step 2: Loop through the names and import each one individually.
+          for (let i = 0; i < sheetNames.length; i++) {
+              const name = sheetNames[i];
+              updateButtonText.textContent = `Importing ${i + 1}/${sheetNames.length}: ${name}`;
+              
+              try {
+                  // We will now call a different, more efficient endpoint.
+                  const importRes = await fetch('/api/import-category-by-name/', {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'X-CSRFToken': csrftoken,
+                      },
+                      body: JSON.stringify({ category_name: name }) // Send the name, not the index
+                  });
+
+                  const result = await importRes.json();
+                  if (!importRes.ok) {
+                      // If this specific sheet fails, show an error and stop.
+                      throw new Error(result.error || `Error processing ${name}`);
+                  }
+
+                  // Show a success message for this specific sheet.
+                  updateStatus.innerHTML = `<div class="alert alert-custom-success">✔️ ${result.message}</div>`;
+                  await fetchDashboardData(); // Refresh counters after each success
+
+              } catch (error) {
+                  console.error(error);
+                  updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${error.message}</div>`;
+                  // Stop the loop if one fails.
+                  updateButton.disabled = false;
+                  updateSpinner.style.display = 'none';
+                  updateButtonText.textContent = 'Update all from Google Sheet';
+                  return;
+              }
+          }
+          
+          // If the loop completes successfully
+          updateStatus.innerHTML = `<div class="alert alert-custom-success">✅ All categories have been synchronized!</div>`;
           updateButton.disabled = false;
           updateSpinner.style.display = 'none';
           updateButtonText.textContent = 'Update all from Google Sheet';
-          return;
       }
-      
-      let isDone = false;
-      while (!isDone) {
-        updateButtonText.textContent = `Importing ${nextCategoryIndex + 1} of ${totalCategories}...`;
-        try {
-          // MODIFIED: Added credentials and CSRF token for this POST request.
-          const response = await fetch('/api/import-chunked/', {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': csrftoken,
-            },
-            body: JSON.stringify({ category_index: nextCategoryIndex }),
-          });
-
-          const result = await response.json();
-          if (!response.ok) {
-            const errorMessage = result.error || 'An unknown server error occurred.';
-            updateStatus.innerHTML = `<div class="alert alert-custom-error">❌ ${errorMessage}</div>`;
-            isDone = true;
-            continue;
-          }
-          
-          updateStatus.innerHTML = `<div class="alert alert-custom-success">✔️ ${result.message}</div>`;
-          
-          if (result.done) {
-            isDone = true;
-            await fetchDashboardData();
-          } else {
-            nextCategoryIndex = result.next_category_index;
-          }
-
-        } catch (error) {
-          updateStatus.innerHTML += `<div class="alert alert-custom-error">❌ A network error occurred: ${error.message}</div>`;
-          isDone = true;
-        }
-      }
-
-      updateButton.disabled = false;
-      updateButtonText.textContent = 'Update all from Google Sheet';
-      updateSpinner.style.display = 'none';
-    }
 
     async function loadExistingCategories() {
       categorySelector.disabled = true;
