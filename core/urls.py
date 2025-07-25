@@ -11,6 +11,7 @@ from .views import (
 router = DefaultRouter()
 router.register(r'inventory/categories', CategoryViewSet, basename='category')
 router.register(r'inventory/items', ItemViewSet, basename='item')
+app_name = 'core'
 
 urlpatterns = [
     path('', include(router.urls)),

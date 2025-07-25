@@ -357,12 +357,12 @@ body {
                 <div class="col-md-6 col-lg-4 mb-4">
                     <div class="card result-card h-100">
                         <div class="card-body d-flex flex-column">
-                            <h5 class="card-title">${item.name}</h5>
+                          <h5 class="card-title">${item.name}</h5>
                             <p class="card-subtitle">SKU: ${item.sku}</p>
                             <p class="card-subtitle">Inventory: ${item.inventory}</p>
                             <p class="card-text fw-bold mb-2">Price: PHP ${item.price}</p>
-                            <div class="label-preview-container"><iframe id="${iframeId}" class="label-preview-iframe" title="Label Preview for ${item.sku}" scrolling="no"></iframe></div>
-                            <div class="mt-auto"><button class="btn btn-primary w-100" onclick="printLabel('${item.sku}')"><i class="fa-solid fa-print"></i> Print This Label</button></div>
+                              <div class="label-preview-container"><iframe id="${iframeId}" class="label-preview-iframe" title="Label Preview for ${item.sku}" scrolling="no"></iframe></div>
+                            <div class="mt-auto"><button class="btn btn-primary w-100" onclick="printLabel(this)"><i class="fa-solid fa-print"></i> Print This Label</button></div>
                         </div>
                     </div>
                 </div>`;
@@ -402,41 +402,73 @@ body {
         }
     }
 
-    async function printLabel(sku) {
-        const url = `/api/generate-label/?sku=${sku}`;
+// DELETE your old printLabel function and REPLACE it with this one.
+// Put it right before the "--- EVENT LISTENERS ---" section.
+
+    async function printLabel(button) {
+        // A. Show a loading state to the user
+        const originalButtonText = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating...';
+
         try {
-            const response = await fetch(url, { credentials: 'include' });
-            if (response.ok) {
-                const labelHtml = await response.text();
-                const printWindow = window.open('', '_blank', 'width=700,height=500');
-                printWindow.document.open();
-                printWindow.document.write(labelHtml);
-                printWindow.document.close();
-                setTimeout(() => {
-                    printWindow.focus();
-                    printWindow.print();
-                    printWindow.close();
-                }, 250);
-            } else {
-                const errorData = await response.json();
-                alert(`Could not generate label: ${errorData.error || 'Unknown error'}`);
+            // B. Find the iframe right next to the button that was clicked
+            const cardBody = button.closest('.card-body');
+            const iframe = cardBody.querySelector('.label-preview-iframe');
+
+            if (!iframe) {
+                throw new Error("Could not find the label preview iframe.");
             }
+
+            // C. Access the content inside the iframe and find the label element
+            const iframeDoc = iframe.contentWindow.document;
+            const labelElement = iframeDoc.querySelector('.label-wrapper');
+            
+            if (!labelElement) {
+                throw new Error("Could not find the '.label-wrapper' inside the iframe.");
+            }
+
+            // D. Use html2canvas to capture the already-perfect label
+            const canvas = await html2canvas(labelElement, {
+                scale: 3,       // High resolution for sharp text and barcodes
+                useCORS: true,  // Important for web fonts
+                logging: false
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+
+            // E. Create the PDF with the correct dimensions
+            const pdf = new jspdf.jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: [30, 20]
+            }); 
+
+            pdf.addImage(imgData, 'PNG', 0, 0, 30, 20);
+
+            // F. Open the PDF for printing
+            window.open(pdf.output('bloburl').toString() + '#zoom=660', '_blank');
+
         } catch (error) {
-            console.error("Failed to generate or print label:", error);
-            alert("An error occurred while trying to print the label. Please check the console.");
+            console.error("PDF Generation Failed:", error);
+            alert("Could not generate the label PDF. Please check the console for details.");
+        } finally {
+            // G. Restore the button to its normal state
+            button.disabled = false;
+            button.innerHTML = originalButtonText;
         }
     }
-    
+        
     // --- EVENT LISTENERS ---
     document.addEventListener('DOMContentLoaded', async () => {
-        const response = await fetch('/inventory/categories/', { credentials: 'include' });
+      const response = await fetch('/inventory/categories/', { credentials: 'include' });
         if (response.ok) {
-            const categories = await response.json();
-            const categoryList = categories.results || categories;
-            categorySelect.innerHTML = '<option value="">All Categories</option>';
-            categoryList.forEach(category => categorySelect.appendChild(new Option(category.name, category.id)));
-        }
-    });
+                const categories = await response.json();
+                const categoryList = categories.results || categories;
+                categorySelect.innerHTML = '<option value="">All Categories</option>';
+                categoryList.forEach(category => categorySelect.appendChild(new Option(category.name, category.id)));
+            }
+        });
     
     searchButton.addEventListener('click', performSearch);
     sortSelect.addEventListener('change', performSearch);
@@ -449,6 +481,10 @@ body {
         window.location.href = '/login/';
     });
 </script>
+<!-- ADD THESE TWO LINES at the bottom of the body -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 
 </body>
 </html>
