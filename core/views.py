@@ -3,9 +3,9 @@ from rest_framework import viewsets, filters
 from .models import Category, Item
 from .serializers import CategorySerializer, ItemSerializer
 from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.core.management import call_command
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from .filters import ItemFilter
@@ -15,64 +15,51 @@ import barcode
 from barcode.writer import ImageWriter
 from barcode.errors import IllegalCharacterError, NumberOfDigitsError
 from io import BytesIO
-from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.contrib.auth import authenticate, login
-from django.shortcuts import render, redirect
-from django.http import HttpResponseRedirect
 
 from rest_framework.pagination import PageNumberPagination
 
+from google.oauth2.service_account import Credentials
+import gspread
+from django.conf import settings
+
+from core.utils.import_helpers import import_category_from_sheet
+import logging
+
+logger = logging.getLogger(__name__)
+
+# --- ViewSets ---
+
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    API endpoint that allows categories to be viewed.
-    """
     queryset = Category.objects.all().order_by('id')
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated] 
+    permission_classes = [IsAuthenticated]
+
 
 class ItemViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    API endpoint that allows items to be viewed.
-    This view manually handles filtering by category and searching by name/sku
-    to ensure they work together correctly.
-    """
     serializer_class = ItemSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
-    
-    # We still need the OrderingFilter for sorting!
-    # We are removing DjangoFilterBackend and SearchFilter because we are handling them manually.
+
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['name', 'sku', 'created_at']
-    ordering = ['-created_at']  # Default ordering: newest first
-    
-    def get_queryset(self):
-        """
-        This method is overridden to provide custom filtering logic.
-        """
-        # Start with all items.
-        queryset = Item.objects.all()
+    ordering = ['-created_at']
 
-        # 1. First, filter by category if a category ID is provided.
+    def get_queryset(self):
+        queryset = Item.objects.all()
         category_id = self.request.query_params.get('category', None)
         if category_id:
-            # This applies the filter, narrowing down the queryset.
             queryset = queryset.filter(category__id=category_id)
 
-        # 2. Then, filter by the search term on the *already filtered* queryset.
         search_term = self.request.query_params.get('search', None)
         if search_term:
-            # Use a Q object to search in EITHER the name OR the sku.
-            # `icontains` makes the search case-insensitive.
-            queryset = queryset.filter(
-                Q(name__icontains=search_term)
-            )
-            
-        # The OrderingFilter will be applied automatically by DRF after this method returns.
-        # We can set a default order here.
+            queryset = queryset.filter(Q(name__icontains=search_term) | Q(sku__icontains=search_term))
+
         return queryset.order_by('name')
 
+
+# --- Authentication views ---
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -83,192 +70,82 @@ def login_view(request):
         password = request.POST.get('password')
 
         user = authenticate(request, username=username, password=password)
-        if user is not None:
+        if user:
             login(request, user)
             return redirect(request.GET.get('next') or '/dashboard/')
         else:
-            return render(request, 'core/login.html', {
-                'error': 'Invalid username or password.'
-            })
+            return render(request, 'core/login.html', {'error': 'Invalid username or password.'})
 
     return render(request, 'core/login.html')
 
 
 @login_required
 def dashboard_view(request):
-    """Serves the dashboard.html template after login."""
     return render(request, 'core/dashboard.html')
 
-# --- NEW VIEW TO TRIGGER THE IMPORT SCRIPT ---
-# @api_view(['POST']) # Use POST for actions that change data or run processes
-# @permission_classes([IsAuthenticated]) # IMPORTANT: Only allow admins to run this
-# def trigger_import_view(request):
-#     """
-#     Triggers the 'import_inventory' management command.
-#     """
-#     try:
-#         # Show that the process is starting
-#         print("Import command triggered by user:", request.user.username)
-        
-#         # Use call_command to run your script
-#         call_command('import_inventory')
-
-#         # Return a success response
-#         return JsonResponse({'status': 'success', 'message': 'Inventory synchronization completed successfully.'})
-
-#     except Exception as e:
-#         # Log the error and return an error response
-#         print(f"An error occurred during import: {e}")
-#         return JsonResponse({'status': 'error', 'message': f'An error occurred: {str(e)}'}, status=500)
 
 @login_required
 def barcode_generator_view(request):
-    """Serves the barcode generator page."""
     return render(request, 'core/barcode_generator.html')
+
+
+# --- Barcode generation ---
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def generate_barcode_view(request):
-    """
-    Generates a valid EAN-13 barcode image from a provided 13-digit SKU.
-    It validates the SKU and uses it directly.
-    """
-    sku = request.GET.get('sku', None)
+    sku = request.GET.get('sku')
     if not sku:
         return Response({'error': 'SKU parameter is required.'}, status=400)
 
-    # --- Step 1: Validate the SKU for EAN-13 rules ---
-    # It MUST be a string of numbers, and its length must be exactly 13.
     if not sku.isdigit() or len(sku) != 13:
-        error_message = f"Invalid SKU for EAN-13: '{sku}'. It must be a 13-digit number."
-        return Response({'error': error_message}, status=400)
+        return Response({'error': 'SKU must be a 13-digit number.'}, status=400)
 
     try:
-        # --- Step 2: Generate the barcode ---
         EAN = barcode.get_barcode_class('ean13')
-        
-        # We pass the full 13-digit SKU directly to the library.
-        # The library will validate the checksum. If it's incorrect, it will raise an error.
         ean_barcode = EAN(sku, writer=ImageWriter())
-
-        # Define rendering options for a clean look
         options = {
             'module_height': 15.0,
             'font_size': 10,
             'text_distance': 5.0,
             'quiet_zone': 3.0
         }
-
-        # Write the barcode to an in-memory buffer
         buffer = BytesIO()
         ean_barcode.write(buffer, options=options)
-        
-        # --- Step 3: Return the image as a response ---
         buffer.seek(0)
         return HttpResponse(buffer.getvalue(), content_type='image/png')
-
     except (IllegalCharacterError, NumberOfDigitsError) as e:
-        # This will catch errors if the checksum is wrong or other library issues.
-        error_message = f"Barcode generation failed for SKU '{sku}'. It may have an invalid checksum. Error: {e}"
-        return Response({'error': error_message}, status=500)
+        return Response({'error': f'Invalid SKU or checksum error: {e}'}, status=500)
     except Exception as e:
-        # A fallback for any other unexpected errors
-        error_message = f"An unexpected error occurred while generating the barcode for SKU '{sku}': {str(e)}"
-        return Response({'error': error_message}, status=500)
-    
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def generate_label_view(request):
-#     """
-#     Generates a full HTML document for a 30x20mm label,
-#     including company name, barcode, item name, and price.
-#     """
-#     sku = request.GET.get('sku', None)
-#     if not sku:
-#         return Response({'error': 'SKU parameter is required.'}, status=400)
+        return Response({'error': f'Unexpected error generating barcode: {e}'}, status=500)
 
-#     try:
-#         item = Item.objects.get(sku=sku)
-#     except Item.DoesNotExist:
-#         return Response({'error': f'Item with SKU {sku} not found.'}, status=404)
 
-#     # --- 1. Generate the barcode image data as Base64 ---
-#     # We'll embed the image directly into the HTML to avoid a separate request.
-#     try:
-#         # Prepare the 12-digit SKU for the library
-#         if not sku.isdigit() or len(sku) not in [12, 13]:
-#             raise ValueError("Invalid SKU for EAN-13.")
-        
-#         sku_to_generate = sku[:12]
-        
-#         EAN = barcode.get_barcode_class('ean13')
-#         ean_barcode = EAN(sku_to_generate, writer=ImageWriter())
-        
-#         buffer = BytesIO()
-#         # Note: We are not rendering the text here, as we'll add it ourselves in the HTML
-#         ean_barcode.write(buffer, options={'write_text': False, 'module_height': 10.0})
-        
-#         import base64
-#         barcode_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        
-#     except Exception as e:
-#         return Response({'error': f'Failed to generate barcode image: {e}'}, status=500)
-
-#     # --- 2. Prepare the context data for the template ---
-#     # This data will be passed into our new HTML template.
-#     context = {
-#         'company_name': 'ALOCADA ENTERPRISES',
-#         'item_name': item.name,
-#         'price': item.price,
-#         'sku': item.sku,
-#         'barcode_image_base64': barcode_image_base64,
-#     }
-
-#     # --- 3. Render the HTML template as a string ---
-#     # We will create 'core/label_template.html' in the next step.
-#     html_string = render_to_string('core/label_template.html', context)
-
-#     # --- 4. Return the full HTML document ---
-#     return HttpResponse(html_string)
-
-# core/views.py
+# --- Label generation (HTML with client-side JsBarcode) ---
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def generate_label_view(request):
-    """
-    Generates a full HTML document for a 30x20mm label by rendering
-    the label_template.html. The template itself will handle barcode generation
-    using JsBarcode on the client-side.
-    """
-    sku = request.GET.get('sku', None)
+    sku = request.GET.get('sku')
     if not sku:
         return Response({'error': 'SKU parameter is required.'}, status=400)
 
-    # --- 1. Validate the SKU format ---
     if not sku.isdigit() or len(sku) != 13:
-        error_message = f"Invalid SKU: '{sku}'. It must be a 13-digit number."
-        return Response({'error': error_message}, status=400)
+        return Response({'error': 'SKU must be a 13-digit number.'}, status=400)
 
-    # --- 2. Find the item in the database ---
     try:
         item = Item.objects.get(sku=sku)
     except Item.DoesNotExist:
         return Response({'error': f'Item with SKU {sku} not found.'}, status=404)
     except Exception as e:
-        return Response({'error': f'A database error occurred: {e}'}, status=500)
+        return Response({'error': f'Database error: {e}'}, status=500)
 
-    # --- 3. Prepare the context for the template ---
     context = {
         'company_name': 'ALOCADA ENTERPRISES',
         'item_name': item.name,
         'price': item.price,
         'sku': item.sku,
-        # We no longer need 'barcode_image_base64'
     }
 
-    # --- 4. Render the HTML template and return it ---
-    # The browser will receive this full HTML document.
     try:
         html_string = render_to_string('core/label_template.html', context)
         return HttpResponse(html_string)
@@ -276,22 +153,7 @@ def generate_label_view(request):
         return Response({'error': f'Error rendering label template: {e}'}, status=500)
 
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from django.conf import settings
-from google.oauth2.service_account import Credentials
-import gspread
-
-from core.utils.import_helpers import import_category_from_sheet
-
-import logging
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from google.oauth2.service_account import Credentials
-import gspread
-from django.conf import settings
-
-logger = logging.getLogger(__name__)
+# --- Google Sheets import views ---
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -300,21 +162,18 @@ def import_category_view(request):
     if not category_name:
         return Response({"error": "Missing category_name"}, status=400)
 
-    try:
-        Category.objects.get(name=category_name)
-    except Category.DoesNotExist:
-        return Response({"error": f"Category '{category_name}' does not exist in DB."}, status=400)
+    if not Category.objects.filter(name=category_name).exists():
+        return Response({"error": f"Category '{category_name}' does not exist."}, status=400)
 
     scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
     creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
     client = gspread.authorize(creds)
     spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
 
-    # Find the sheet matching the category name
     try:
         sheet = spreadsheet.worksheet(category_name)
     except gspread.WorksheetNotFound:
-        return Response({"error": f"No matching sheet named '{category_name}' found."}, status=404)
+        return Response({"error": f"No sheet named '{category_name}' found."}, status=404)
 
     try:
         summary = import_category_from_sheet(sheet, settings.GOOGLE_SHEETS_CREDENTIALS)
@@ -328,10 +187,6 @@ def import_category_view(request):
         "message": summary["message"],
     })
 
-from core.models import Category
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -339,13 +194,6 @@ def existing_categories_view(request):
     categories = Category.objects.all().values_list('name', flat=True)
     return Response({'categories': list(categories)})
 
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-import gspread
-from google.oauth2.service_account import Credentials
-from django.conf import settings
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -356,62 +204,45 @@ def category_sheet_names_view(request):
         client = gspread.authorize(creds)
         spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
 
-        category_sheets = spreadsheet.worksheets()[4:]  # skip first 4
+        # Skip first 4 sheets as requested
+        category_sheets = spreadsheet.worksheets()[4:]
         names = [sheet.title for sheet in category_sheets]
-
         return Response({'names': names})
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
-# core/views.py
-
-# ... (keep all your other imports and views)
-from .utils.import_helpers import import_category_from_sheet # Make sure this is imported
-
-# ...
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def import_chunked_view(request):
-    """
-    Imports one category from Google Sheets based on an index.
-    Designed for a chunked import process orchestrated by the frontend.
-    """
-    # Get the index from the frontend's request. Default to 0 for the first call.
     category_index = request.data.get('category_index', 0)
 
     try:
-        # 1. Authenticate with Google Sheets
         scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
         creds = Credentials.from_service_account_info(settings.GOOGLE_SHEETS_CREDENTIALS, scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open('MASTER LIST 2 - v2.updated one')
-        
-        # 2. Get the list of category sheets (skipping the first 4)
+
         category_sheets = spreadsheet.worksheets()[4:]
-        
-        # 3. Check if the import process is finished
+
         if category_index >= len(category_sheets):
-            # We've processed all categories. Signal completion.
             return Response({
                 'done': True,
-                'message': 'All categories have been successfully synchronized!'
+                'message': 'All categories have been synchronized!'
             })
 
-        # 4. Process the current chunk (one category sheet)
         sheet_to_import = category_sheets[category_index]
         summary = import_category_from_sheet(sheet_to_import, settings.GOOGLE_SHEETS_CREDENTIALS)
 
-        # 5. Return a progress update to the frontend
         return Response({
             'done': False,
             'message': summary.get('message', f"Processed sheet '{sheet_to_import.title}'."),
-            'next_category_index': category_index + 1 # Tell the frontend which index to request next
+            'next_category_index': category_index + 1
         })
 
     except gspread.exceptions.APIError as e:
-        logger.error(f"Google Sheets API Error during chunked import: {e}")
-        return Response({'error': 'A Google Sheets API error occurred. Check rate limits or permissions.'}, status=503)
+        logger.error(f"Google Sheets API error during import: {e}")
+        return Response({'error': 'Google Sheets API error. Check rate limits/permissions.'}, status=503)
     except Exception as e:
-        logger.error(f"An unexpected error occurred during chunked import at index {category_index}: {e}")
-        return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=500)
+        logger.error(f"Unexpected error during chunked import at index {category_index}: {e}")
+        return Response({'error': f'Unexpected error: {str(e)}'}, status=500)
