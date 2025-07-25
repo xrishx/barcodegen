@@ -17,7 +17,7 @@ from barcode.errors import IllegalCharacterError, NumberOfDigitsError
 from io import BytesIO
 from django.template.loader import render_to_string
 from django.contrib.auth import authenticate, login
-
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.pagination import PageNumberPagination
 
 from google.oauth2.service_account import Credentials
@@ -38,32 +38,31 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ItemViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    An optimized ViewSet for Items that uses DRF's built-in
+    filtering and searching for maximum performance.
+    """
+    queryset = Item.objects.all().select_related('category') # .select_related is a performance boost
     serializer_class = ItemSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
 
-    filter_backends = [filters.OrderingFilter]
+    # This is the corrected list of backends
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
+
+    # --- Configuration for the filter backends ---
+
+    # 1. For SearchFilter: Tells it which fields to search within
+    search_fields = ['name', 'sku']
+
+    # 2. For DjangoFilterBackend: Tells it which fields we can filter by exact match
+    filterset_fields = ['category']
+
+    # 3. For OrderingFilter: This remains the same
     ordering_fields = ['name', 'sku', 'created_at']
-    ordering = ['-created_at']
+    ordering = ['-created_at'] # Default sort order
 
-    def get_queryset(self):
-        queryset = Item.objects.all()
-        category_id = self.request.query_params.get('category', None)
-        if category_id:
-            queryset = queryset.filter(category__id=category_id)
-
-        search_term = self.request.query_params.get('search', None)
-        if search_term:
-            # This is the new, super-fast search logic
-            # It searches across both name and sku fields
-            vector = SearchVector('name', 'sku')
-            query = SearchQuery(search_term)
-            queryset = queryset.annotate(
-                rank=SearchRank(vector, query)
-            ).filter(rank__gte=0.1).order_by('-rank') # Order by relevance!
-        
-        # The OrderingFilter will still handle the explicit sort dropdown
-        return queryset
+    # NOTE: The custom get_queryset() method is no longer needed and has been removed.
 
 
 # --- Authentication views ---
