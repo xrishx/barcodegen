@@ -5,7 +5,7 @@ from .views import (
     login_view, dashboard_view,
     barcode_generator_view, generate_barcode_view, generate_label_view,
     import_category_view, category_sheet_names_view,
-    existing_categories_view, import_chunked_view, import_category_by_name_view, dashboard_stats_view
+    existing_categories_view, import_chunked_view, import_category_by_name_view, dashboard_stats_view, batch_generate_labels_view
 )
 
 router = DefaultRouter()
@@ -31,4 +31,5 @@ urlpatterns = [
     path('api/import-chunked/', import_chunked_view, name='import-chunked'),
     path('api/import-category-by-name/', import_category_by_name_view, name='import-by-name'),
     path('api/dashboard-stats/', dashboard_stats_view, name='dashboard-stats'),
+    path('api/batch-generate-labels/', batch_generate_labels_view, name='api-batch-labels'),
 ]

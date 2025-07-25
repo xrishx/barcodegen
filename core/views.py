@@ -26,6 +26,8 @@ from django.conf import settings
 
 from core.utils.import_helpers import import_category_from_sheet, update_dashboard_stats
 import logging
+import json
+
 
 logger = logging.getLogger(__name__)
 
@@ -313,3 +315,49 @@ def dashboard_stats_view(request):
         'user': user_data
     }
     return Response(data)
+
+def batch_generate_labels_view(request):
+    """
+    Receives a list of SKUs and returns a dictionary of
+    { sku: rendered_html, ... }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+
+    try:
+        # Load the list of SKUs from the request body
+        data = json.loads(request.body)
+        skus = data.get('skus', [])
+        
+        if not isinstance(skus, list):
+            return JsonResponse({'error': 'SKUs must be a list'}, status=400)
+
+        # Fetch the corresponding items from the database in a single query
+        items = Item.objects.filter(sku__in=skus)
+        
+        # Create a dictionary for quick lookups
+        items_by_sku = {item.sku: item for item in items}
+        
+        labels_html = {}
+        company_name = "ALOCADA ENTERPRISES" # Or get this from settings/DB
+
+        # Loop through the requested SKUs to generate HTML for each
+        for sku in skus:
+            item = items_by_sku.get(sku)
+            if item:
+                context = {
+                    'sku': item.sku,
+                    'item_name': item.name,
+                    'price': item.price,
+                    'company_name': company_name,
+                }
+                # Use the exact same template as your single-label API
+                html = render_to_string('core/label_template.html', context)
+                labels_html[sku] = html
+        
+        return JsonResponse(labels_html)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
