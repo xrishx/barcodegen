@@ -17,11 +17,11 @@
     <!-- Custom Styles -->
     <style>
         :root {
-          --terminal-green: #00ff88;
-          --background-color: #000000;
-          --card-bg-color: #111111;
-          --text-color: #00ff88;
-          --light-gray: #222222;
+            --terminal-green: #00ff88;
+            --background-color: #000000;
+            --card-bg-color: #111111;
+            --text-color: #00ff88;
+            --light-gray: #222222;
         }
         body { font-family: 'Share Tech Mono', monospace; background-color: var(--background-color); color: var(--text-color); }
         .navbar { background-color: var(--card-bg-color); border-bottom: 2px solid var(--terminal-green); box-shadow: 0 0 8px var(--terminal-green), inset 0 0 15px rgba(0, 255, 136, 0.3); font-weight: bold; }
@@ -269,6 +269,7 @@
             const pdf = new jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: [30, 20] });
             pdf.addImage(imgData, 'PNG', 0, 0, 30, 20);
 
+            pdf.autoPrint();
             window.open(pdf.output('bloburl').toString() + '#zoom=660', '_blank');
 
         } catch (error) {
@@ -282,7 +283,7 @@
         
     // --- EVENT LISTENERS ---
     document.addEventListener('DOMContentLoaded', async () => {
-      const response = await fetch('/inventory/categories/', { credentials: 'include' });
+    const response = await fetch('/inventory/categories/', { credentials: 'include' });
         if (response.ok) {
             const categories = await response.json();
             const categoryList = categories.results || categories;
