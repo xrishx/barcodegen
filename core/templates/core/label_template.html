@@ -9,9 +9,9 @@
     <title>Print Label - {{ sku }}</title>
     <style>
         @page {
-        width: 30mm;
-        height: 20mm;
-        margin: 0;
+            width: 30mm;
+            height: 20mm;
+            margin: 0;
         }
 
         html, body {
@@ -76,7 +76,7 @@
             text-align: center;
         }
 
-        .barcode-image {
+        canvas.barcode-image {
             width: 100%;
             height: auto;
             max-height: 10mm;
@@ -115,7 +115,7 @@
             overflow-wrap: break-word;
             word-break: break-word;
             white-space: normal;
-        }   
+        }
 
         .price {
             font-family: 'Tiktok Sans', Arial, sans-serif;
@@ -130,13 +130,6 @@
             line-height: 3mm;
             text-align: center;
         }
-        /* .price {
-        line-height: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        } */
-
     </style>
 </head>
 <body>
@@ -145,7 +138,7 @@
             <div class="company-name">{{ company_name }}</div>
 
             <div class="barcode-container">
-                <svg id="barcode" class="barcode-image"></svg> 
+                <canvas id="barcode" class="barcode-image"></canvas>
             </div>
 
             <div class="item-name-container">
@@ -155,25 +148,23 @@
             <div class="price">Php {{ price }}</div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+    <!-- bwip-js (browser build) -->
+    <script src="https://unpkg.com/bwip-js/dist/bwip-js-min.js"></script>
+
     <script>
     function adjustPriceFont() {
         const priceElem = document.querySelector(".price");
         let fontSize = 14;
-
-        // Reset first
         priceElem.style.fontSize = fontSize + "pt";
         priceElem.style.whiteSpace = "nowrap";
-
         const parentWidth = priceElem.offsetWidth;
 
-        // Reduce font size until the text fits in one line or until min font size
         while (priceElem.scrollWidth > parentWidth && fontSize > 6) {
             fontSize -= 0.5;
             priceElem.style.fontSize = fontSize + "pt";
         }
 
-        // If still too long even after reducing font, allow wrapping and shrink more
         if (priceElem.scrollWidth > parentWidth) {
             priceElem.style.whiteSpace = "normal";
             priceElem.style.lineHeight = "1.1";
@@ -183,55 +174,63 @@
             }
         }
     }
-function adjustItemNameFont() {
-    const nameElem = document.querySelector(".item-name");
-    const container = nameElem.parentElement;
 
-    if (!nameElem || !container) {
-        console.warn("Item name or container not found.");
-        return;
-    }
+    function adjustItemNameFont() {
+        const nameElem = document.querySelector(".item-name");
+        const container = nameElem.parentElement;
+        if (!nameElem || !container) return;
 
-    let fontSize = 6;
-    const minFontSize = 4.5;
-
-    nameElem.style.fontSize = fontSize + "pt";
-    nameElem.style.whiteSpace = "normal";
-    nameElem.style.lineHeight = "1.8mm";
-
-    // Use getBoundingClientRect for more accurate size check
-    while (
-        (nameElem.scrollHeight > container.clientHeight || nameElem.scrollWidth > container.clientWidth) &&
-        fontSize > minFontSize
-    ) {
-        fontSize -= 0.25;
+        let fontSize = 6;
+        const minFontSize = 4.5;
         nameElem.style.fontSize = fontSize + "pt";
+        nameElem.style.whiteSpace = "normal";
+        nameElem.style.lineHeight = "1.8mm";
+
+        while (
+            (nameElem.scrollHeight > container.clientHeight || nameElem.scrollWidth > container.clientWidth) &&
+            fontSize > minFontSize
+        ) {
+            fontSize -= 0.25;
+            nameElem.style.fontSize = fontSize + "pt";
+        }
     }
-
-    console.log(`Final item name font size: ${fontSize}pt`);
-}
-
 
     document.addEventListener("DOMContentLoaded", () => {
-        // Barcode generation
-        JsBarcode("#barcode", "{{ sku }}", {
-            format: "ean13",
-            lineColor: "#000",
-            width: 0.8,
-            height: 18,
-            displayValue: true,
-            fontSize: 6,
-            textMargin: 0,
-            margin: 0.8,
-            flat: true,
-            font: "monospace",
-        });
+        const sku = "{{ sku }}";
+        const canvas = document.getElementById("barcode");
 
-        // Adjust price font
+        // Adjust canvas resolution for thermal printer (e.g. 300 DPI)
+        const mmToInch = 0.0393701;
+        const dpi = 300;
+        const labelWidthMM = 28;  // usable barcode area
+        const labelHeightMM = 10;
+
+        // Physical canvas size in pixels
+        canvas.width = Math.floor(labelWidthMM * mmToInch * dpi);
+        canvas.height = Math.floor(labelHeightMM * mmToInch * dpi);
+
+        // Render barcode with higher resolution
+        try {
+            bwipjs.toCanvas(canvas, {
+                bcid:        'ean13',
+                text:        sku,
+                scaleX:      12,          // Increase thickness
+                scaleY:      12,          // Increase height
+                height:      8,         // in millimeters (bwip handles this)
+                includetext: true,
+                textxalign:  'center',
+                textsize:    8,         // Text size in points
+                paddingwidth: 0,
+                paddingheight: 0,
+                monochrome: true,
+            });
+        } catch (e) {
+            console.error("Barcode generation failed:", e);
+        }
+
         adjustPriceFont();
         adjustItemNameFont();
     });
-</script>
-
+    </script>
 </body>
 </html>
