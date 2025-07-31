@@ -186,6 +186,7 @@ def import_category_view(request):
 
     try:
         summary = import_category_from_sheet(sheet, settings.GOOGLE_SHEETS_CREDENTIALS)
+        update_dashboard_stats()
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
@@ -242,7 +243,7 @@ def import_chunked_view(request):
 
         sheet_to_import = category_sheets[category_index]
         summary = import_category_from_sheet(sheet_to_import, settings.GOOGLE_SHEETS_CREDENTIALS)
-
+        update_dashboard_stats()
         return Response({
             'done': False,
             'message': summary.get('message', f"Processed sheet '{sheet_to_import.title}'."),
@@ -275,7 +276,7 @@ def import_category_by_name_view(request):
         sheet_to_import = spreadsheet.worksheet(category_name)
         
         summary = import_category_from_sheet(sheet_to_import, settings.GOOGLE_SHEETS_CREDENTIALS)
-
+        update_dashboard_stats()
         return Response({
             "message": summary.get('message', f"Processed sheet '{category_name}'.")
         })
